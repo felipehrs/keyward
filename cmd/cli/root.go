@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"hrs.dev.br/keyward/core"
+	"github.com/felipehrs/keyward/core"
 )
 
 func newRootCmd(keySvc core.KeyService, configSvc core.ConfigService, backupSvc core.BackupService) *cobra.Command {

@@ -7,7 +7,7 @@ decisões arquiteturais e seus motivos — leia antes de mudanças estruturais).
 
 ## Módulo e build
 
-- Módulo Go: `hrs.dev.br/keyward`, Go 1.26.5.
+- Módulo Go: `github.com/felipehrs/keyward`, Go 1.26.5.
 - `make check` roda `vet build test lint` (usa `golangci-lint`). `make lint` sozinho requer
   `golangci-lint` instalado.
 - `go test ./...` para rodar só os testes.

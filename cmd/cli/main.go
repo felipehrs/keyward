@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"hrs.dev.br/keyward/core"
+	"github.com/felipehrs/keyward/core"
 )
 
 func main() {

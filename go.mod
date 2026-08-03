@@ -1,4 +1,4 @@
-module hrs.dev.br/keyward
+module github.com/felipehrs/keyward
 
 go 1.26.5
 

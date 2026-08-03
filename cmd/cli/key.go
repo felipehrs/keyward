@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hrs.dev.br/keyward/core"
+	"github.com/felipehrs/keyward/core"
 )
 
 func newKeyCmd(keySvc core.KeyService) *cobra.Command {

@@ -72,9 +72,10 @@ dia a dia.
 - **Linguagem:** Go — compila para binário único estático por plataforma, sem runtime externo,
   o que facilita distribuir CLI, TUI e GUI a partir da mesma base de código para Windows, Linux
   e macOS.
-- **Módulo Go:** `hrs.dev.br/keyward` (decidido em 2026-08-03, `go.mod` inicializado com
-  Go 1.26.5). Pacotes internos são referenciados a partir desse path (ex.
-  `hrs.dev.br/keyward/core`, `hrs.dev.br/keyward/cmd/cli`).
+- **Módulo Go:** `github.com/felipehrs/keyward` (decidido em 2026-08-03, `go.mod` inicializado com
+  Go 1.26.5; path do módulo atualizado para `github.com/felipehrs/keyward` ao criar o repositório
+  no GitHub). Pacotes internos são referenciados a partir desse path (ex.
+  `github.com/felipehrs/keyward/core`, `github.com/felipehrs/keyward/cmd/cli`).
 - **SSH:** `golang.org/x/crypto/ssh` e `golang.org/x/crypto/ssh/agent` para geração de chaves,
   parsing de formatos e integração futura com `ssh-agent`. Confirmado na prática (2026-08-03):
   `ssh.MarshalPrivateKey`/`MarshalPrivateKeyWithPassphrase` geram chaves ed25519/RSA em formato
