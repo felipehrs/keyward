@@ -57,6 +57,24 @@ func (s *FileConfigService) ReplaceHost(path string, oldPatterns []string, newSp
 	})
 }
 
+func (s *FileConfigService) RemoveHost(path string, patterns []string) error {
+	target, err := s.resolveTargetPath(path)
+	if err != nil {
+		return err
+	}
+
+	return s.mutate(target, func(cfg *ssh_config.Config) error {
+		for i, h := range cfg.Hosts {
+			if !isNamedHost(h) || !patternsEqual(patternStrings(h), patterns) {
+				continue
+			}
+			cfg.Hosts = append(cfg.Hosts[:i], cfg.Hosts[i+1:]...)
+			return nil
+		}
+		return fmt.Errorf("nenhum bloco Host com os patterns %v encontrado em %s", patterns, target)
+	})
+}
+
 func (s *FileConfigService) resolveTargetPath(path string) (string, error) {
 	if path != "" {
 		return path, nil

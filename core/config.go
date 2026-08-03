@@ -78,6 +78,13 @@ type ConfigService interface {
 	// customizada. Blocos não tocados (nesse arquivo ou em qualquer outro
 	// trazido via Include) permanecem intactos byte-a-byte.
 	ReplaceHost(path string, oldPatterns []string, newSpec HostSpec) error
+
+	// RemoveHost localiza, EM path (ou no arquivo principal, se path ==
+	// ""), o bloco cujo conjunto de Patterns seja idêntico a patterns, e o
+	// remove por inteiro. Retorna erro se nenhum bloco correspondente for
+	// encontrado. Blocos não tocados (nesse arquivo ou em qualquer outro
+	// trazido via Include) permanecem intactos byte-a-byte.
+	RemoveHost(path string, patterns []string) error
 }
 
 // FileConfigService implementa ConfigService lendo/escrevendo a partir do

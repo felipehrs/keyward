@@ -15,7 +15,9 @@ interfaces: CLI, TUI e GUI desktop.
   metadata/reconciliação, backup export/import)
 - [x] Lint/CI — `golangci-lint` (com `depguard` verificando a fronteira do Wails) + GitHub Actions
 - [x] `cmd/cli` — CLI via Cobra, cobrindo `key`, `host` e `backup`
-- [ ] `cmd/tui` — TUI via Bubble Tea (ainda placeholder)
+- [x] `cmd/tui` — TUI via Bubble Tea, cobrindo hosts (listar/adicionar/editar/remover), chaves
+  (listar com destaque de expiração/gerar/detalhe/editar metadata/registrar órfã/unregister),
+  configurações e backup (export/import com resolução de conflito item a item)
 - [ ] `internal/adapter/gui` — GUI desktop via Wails (ainda placeholder)
 - [ ] Empacotamento/distribuição por plataforma (MSI, .deb/.rpm, .dmg)
 
@@ -60,10 +62,16 @@ make lint    # golangci-lint (requer instalação prévia)
 make check   # vet + build + test + lint
 
 go run ./cmd/cli --help   # lista os comandos disponíveis da CLI
+go run ./cmd/tui          # abre a interface interativa de terminal
 ```
 
 A CLI (`cmd/cli`) já cobre todos os métodos de `KeyService`, `ConfigService` e `BackupService` —
-`keyward key ...`, `keyward host ...`, `keyward backup ...`. TUI e GUI ainda estão em construção.
+`keyward key ...`, `keyward host ...`, `keyward backup ...`. A TUI (`cmd/tui`) cobre o mesmo
+conjunto de operações de forma interativa. GUI ainda está em construção.
+
+Para apontar a TUI para um `~/.ssh` e `metadata.json` de teste (sem tocar no ambiente real do
+usuário), use as variáveis de ambiente `KEYWARD_CONFIG`, `KEYWARD_KEY_DIR` e `KEYWARD_METADATA` —
+ver [`cmd/tui/main.go`](cmd/tui/main.go).
 
 ## Segurança
 

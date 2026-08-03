@@ -140,6 +140,71 @@ func TestReplaceHost_MissingHost_ReturnsError(t *testing.T) {
 	}
 }
 
+func TestRemoveHost_RemovesExistingBlock(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	writeFile(t, path, "Host bastion\n    HostName 203.0.113.10\n\nHost work\n    HostName 10.0.0.5\n")
+
+	svc := NewFileConfigService(path)
+	if err := svc.RemoveHost("", []string{"bastion"}); err != nil {
+		t.Fatalf("RemoveHost: %v", err)
+	}
+
+	hosts, err := svc.ListHosts()
+	if err != nil {
+		t.Fatalf("ListHosts: %v", err)
+	}
+	if len(hosts) != 1 || hosts[0].Patterns[0] != "work" {
+		t.Fatalf("esperava só 'work' restante, obteve %+v", hosts)
+	}
+}
+
+func TestRemoveHost_PreservesRestOfFileByteForByte(t *testing.T) {
+	// Nota: comentários imediatamente ANTES de um bloco Host são atribuídos
+	// pela lib kevinburke/ssh_config ao texto bruto do bloco ANTERIOR, não
+	// ao bloco seguinte — por isso o marcador de conteúdo preservado aqui
+	// fica dentro do próprio bloco "work" (não numa linha de comentário
+	// separada acima dele), para não depender dessa atribuição ambígua.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	kept := "Host work\n" +
+		"    HostName 10.0.0.5 # comentário do segundo host\n"
+	original := "# comentário de topo\n\n" +
+		"Host bastion\n" +
+		"    HostName 203.0.113.10\n" +
+		"    User ops\n" +
+		"\n" +
+		kept
+	writeFile(t, path, original)
+
+	svc := NewFileConfigService(path)
+	if err := svc.RemoveHost("", []string{"bastion"}); err != nil {
+		t.Fatalf("RemoveHost: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.Contains(string(got), kept) {
+		t.Fatalf("bloco não removido não preservado verbatim.\nesperado conter:\n%s\nresultado:\n%s", kept, got)
+	}
+	if strings.Contains(string(got), "Host bastion") {
+		t.Fatalf("bloco removido ainda presente:\n%s", got)
+	}
+}
+
+func TestRemoveHost_MissingHost_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	writeFile(t, path, "Host bastion\n    HostName 203.0.113.10\n")
+
+	svc := NewFileConfigService(path)
+	if err := svc.RemoveHost("", []string{"nao-existe"}); err == nil {
+		t.Fatal("esperava erro ao remover host inexistente")
+	}
+}
+
 func TestAddHost_SpecificIncludeFile_Existing(t *testing.T) {
 	home := t.TempDir()
 	setHomeEnv(t, home)
