@@ -1,0 +1,30 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - depguard
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*os.File).Close
+        - (*compress/gzip.Writer).Close
+        - (*compress/gzip.Reader).Close
+        - os.Remove
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    depguard:
+      rules:
+        no-wails-outside-gui:
+          files:
+            - $all
+            - "!**/internal/adapter/gui/**"
+          deny:
+            - pkg: "github.com/wailsapp/wails"
+              desc: "wails só pode ser importado a partir de internal/adapter/gui/** — ver docs/specs/ssh-config-manager.md, seção 3.3"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
