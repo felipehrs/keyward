@@ -9,6 +9,16 @@ interfaces: CLI, TUI e GUI desktop.
 > [`docs/specs/ssh-config-manager.md`](docs/specs/ssh-config-manager.md) para todas as decisões
 > de design e o que ainda está em aberto.
 
+## Status do desenvolvimento
+
+- [x] `core` — lógica de negócio (parsing/escrita de `~/.ssh/config`, geração de chaves,
+  metadata/reconciliação, backup export/import)
+- [x] Lint/CI — `golangci-lint` (com `depguard` verificando a fronteira do Wails) + GitHub Actions
+- [x] `cmd/cli` — CLI via Cobra, cobrindo `key`, `host` e `backup`
+- [ ] `cmd/tui` — TUI via Bubble Tea (ainda placeholder)
+- [ ] `internal/adapter/gui` — GUI desktop via Wails (ainda placeholder)
+- [ ] Empacotamento/distribuição por plataforma (MSI, .deb/.rpm, .dmg)
+
 ## Funcionalidades
 
 - Leitura/parsing de `~/.ssh/config`, seguindo diretivas `Include` recursivamente, com a mesma
@@ -48,10 +58,12 @@ make test    # roda os testes
 make vet     # go vet
 make lint    # golangci-lint (requer instalação prévia)
 make check   # vet + build + test + lint
+
+go run ./cmd/cli --help   # lista os comandos disponíveis da CLI
 ```
 
-CLI e TUI ainda estão em construção — o `core` já implementa boa parte da lógica de negócio do
-MVP (parsing/escrita de config, geração de chaves, metadata e backup/restore).
+A CLI (`cmd/cli`) já cobre todos os métodos de `KeyService`, `ConfigService` e `BackupService` —
+`keyward key ...`, `keyward host ...`, `keyward backup ...`. TUI e GUI ainda estão em construção.
 
 ## Segurança
 

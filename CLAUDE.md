@@ -33,9 +33,15 @@ internal/adapter/gui/frontend/ → HTML/CSS/JS, fala só com app.go via bindings
 ## Estado atual do código
 
 `core` já implementa boa parte do MVP (parsing/escrita de `~/.ssh/config`, geração de chaves,
-metadata/reconciliação, backup export/import). `cmd/cli`, `cmd/tui` e `internal/adapter/gui` são
-ainda placeholders/esqueletos — a lógica de negócio deve continuar sendo construída em `core`
-primeiro, com as interfaces consumindo-a depois.
+metadata/reconciliação, backup export/import). Lint/CI (`golangci-lint` + `depguard` + GitHub
+Actions) e `cmd/cli` (CLI via Cobra, cobertura completa das três interfaces do `core`) estão
+implementados. `cmd/tui` e `internal/adapter/gui` ainda são placeholders/esqueletos. O
+[`README.md`](README.md), seção "Status do desenvolvimento", é a fonte rápida de verdade sobre o
+que está pronto — mantenha-a em sincronia (ver regra abaixo) em vez de confiar só nesta descrição.
+
+**Sempre que uma funcionalidade for adicionada, concluída ou remodelada de forma relevante,
+atualize a seção "Status do desenvolvimento" do `README.md` no mesmo commit** — ela é o status
+report do projeto para quem não vai ler a spec inteira ou o histórico do git.
 
 ## Convenções específicas deste projeto
 
