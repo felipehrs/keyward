@@ -25,7 +25,14 @@ interfaces: CLI, TUI e GUI desktop.
   diálogos nativos de arquivo, cliques) só foi verificada por build/execução sem erro, não por
   teste de UI interativo — não há test runner de frontend configurado (decisão consciente, para
   não empilhar mais risco de toolchain sobre o do próprio Wails v3, ainda em beta)
-- [ ] Empacotamento/distribuição por plataforma (MSI, .deb/.rpm, .dmg)
+- [x] Empacotamento/distribuição por plataforma — `cmd/cli`/`cmd/tui` via
+  [GoReleaser](https://goreleaser.com/) (`.goreleaser.yaml`, cross-compile Go puro sem cgo,
+  `.tar.gz`/`.zip` + checksums + changelog); GUI via tooling nativo do próprio Wails (`wails3
+  task package`), gerando instalador NSIS no Windows, AppImage/`.deb`/`.rpm`/AUR no Linux e
+  `.dmg` no macOS. Um único GitHub Release por tag `vX.Y.Z`, orquestrado por
+  [`.github/workflows/release.yml`](.github/workflows/release.yml) — só GitHub Releases por
+  enquanto (sem Homebrew/Scoop/AUR próprio) e sem assinatura de código (SmartScreen/Gatekeeper
+  vão avisar até haver certificado), decisões conscientes registradas na spec seção 7.
 
 ## Funcionalidades
 

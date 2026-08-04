@@ -1,0 +1,90 @@
+version: 2
+
+project_name: keyward
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cli
+    main: ./cmd/cli
+    binary: keyward
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+  - id: tui
+    main: ./cmd/tui
+    binary: keyward-tui
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: cli
+    ids: [cli]
+    name_template: >-
+      keyward_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+  - id: tui
+    ids: [tui]
+    name_template: >-
+      keyward-tui_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^test:"
+      - "(?i)^merge"
+  groups:
+    - title: "Funcionalidades"
+      regexp: '(?i)^feat(\([^)]*\))?!?:'
+      order: 0
+    - title: "Correções"
+      regexp: '(?i)^fix(\([^)]*\))?!?:'
+      order: 1
+    - title: "Outras mudanças"
+      order: 999
+
+# Instaladores da GUI (Wails) são gerados fora do GoReleaser, pelo tooling
+# nativo do próprio Wails (internal/adapter/gui/Taskfile.yml) numa matriz de
+# runners nativos por SO — GoReleaser não faz cgo cross-platform. O workflow
+# de release baixa esses artefatos para dist-gui/ antes de rodar `goreleaser
+# release`, e eles entram no MESMO GitHub Release via extra_files.
+release:
+  # "auto": detecta sufixo semver de pré-lançamento na tag (-alpha/-beta/-rc)
+  # e marca o GitHub Release correspondente como "Pre-release" automaticamente.
+  prerelease: auto
+  extra_files:
+    - glob: dist-gui/*

@@ -6,7 +6,7 @@
         <key>CFBundleName</key>
             <string>keyward</string>
         <key>CFBundleExecutable</key>
-            <string>keyward.exe</string>
+            <string>keyward</string>
         <key>CFBundleIdentifier</key>
             <string>dev.felipehrs.keyward</string>
         <key>CFBundleVersion</key>
@@ -24,7 +24,7 @@
         <key>NSHighResolutionCapable</key>
             <string>true</string>
         <key>NSHumanReadableCopyright</key>
-            <string>© 2026, My Company</string>
+            <string>(c) 2026, Felipe Herbst Rosa</string>
         <key>NSAppTransportSecurity</key>
         <dict>
             <key>NSAllowsLocalNetworking</key>

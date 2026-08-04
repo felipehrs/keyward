@@ -1,0 +1,133 @@
+name: Release
+
+# Dispara só em push de tag vX.Y.Z. O ci.yml continua cuidando de push/PR
+# pra main; este workflow é só o pipeline de release, com permissão de
+# escrita (contents: write) que o ci.yml deliberadamente não tem.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # cmd/cli e cmd/tui são Go puro (sem cgo) e viram binários pelo GoReleaser
+  # no job "goreleaser" abaixo. A GUI (Wails) precisa de cgo + webview nativo
+  # por SO, então é empacotada aqui, numa matriz de runners nativos, usando
+  # o tooling próprio do Wails (internal/adapter/gui/Taskfile.yml) — não dá
+  # pra fazer isso com o GoReleaser (ver docs/build.md e .goreleaser.yaml).
+  package-gui:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-latest
+            platform: darwin
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: internal/adapter/gui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Install NSIS (Windows)
+        if: matrix.platform == 'windows'
+        run: choco install nsis -y
+        shell: bash
+
+      - name: Install GTK4/WebKitGTK dev libs (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      # nfpm.yaml (build/linux/nfpm/nfpm.yaml) interpola ${VERSION} no
+      # metadata do pacote deb/rpm/AUR — sem isso, o pacote sai com uma
+      # versão vazia/inválida.
+      - name: Derive VERSION from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        shell: bash
+
+      - name: Package GUI (Windows — NSIS installer)
+        if: matrix.platform == 'windows'
+        run: wails3 task package
+
+      - name: Package GUI (Linux — AppImage/deb/rpm/AUR)
+        if: matrix.platform == 'linux'
+        run: wails3 task package
+
+      - name: Package GUI (macOS — .dmg)
+        if: matrix.platform == 'darwin'
+        run: wails3 task package:dmg
+
+      # Cada plataforma gera formatos diferentes em bin/ (inclusive o
+      # binário cru e, no macOS, o .app como diretório) — filtra só os
+      # instaladores de verdade, já que o GitHub Release/extra_files do
+      # GoReleaser espera arquivos, não diretórios.
+      - name: Collect installer(s)
+        shell: bash
+        run: |
+          mkdir -p gui-dist
+          case "${{ matrix.platform }}" in
+            windows) cp bin/*-installer.exe gui-dist/ ;;
+            linux)   cp bin/*.AppImage bin/*.deb bin/*.rpm bin/*.pkg.tar.zst gui-dist/ ;;
+            darwin)  cp bin/*.dmg gui-dist/ ;;
+          esac
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-${{ matrix.platform }}
+          path: internal/adapter/gui/gui-dist/*
+          if-no-files-found: error
+
+  goreleaser:
+    needs: package-gui
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download GUI installers
+        uses: actions/download-artifact@v5
+        with:
+          pattern: gui-*
+          path: dist-gui
+          merge-multiple: true
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -67,8 +67,39 @@ Não há cross-compile simples para a GUI (webview nativo por plataforma); `wail
 targets Docker (`wails3 task setup:docker`/`build:docker`) para cross-compilar Linux a partir de
 outro SO, quando necessário.
 
-## Empacotamento
+## Empacotamento e release
 
-Ainda não há target de release/cross-compile automatizado no `Makefile`, nem empacotamento por
-plataforma (MSI, `.deb`/`.rpm`, `.dmg`) — está listado como pendente na seção "Status do
-desenvolvimento" do [`README.md`](../README.md).
+Duas ferramentas, cada uma cuidando do que ela faz bem — ver `docs/specs/ssh-config-manager.md`
+seção 7 para o raciocínio completo por trás dessa divisão:
+
+- **`cmd/cli`/`cmd/tui`** (Go puro, sem cgo): [GoReleaser](https://goreleaser.com/), configurado
+  em [`.goreleaser.yaml`](../.goreleaser.yaml). Cross-compile nativo do Go
+  (`{linux,darwin,windows} × {amd64,arm64}`), gera `.tar.gz`/`.zip` por plataforma,
+  `checksums.txt` e changelog agrupado por prefixo de commit (`feat`/`fix`).
+- **GUI (Wails)**: cgo + webview nativo não são o forte do GoReleaser — continua usando o
+  tooling do próprio Wails (`wails3 task package`/`package:dmg`, ver seção "GUI" acima), rodando
+  numa matriz de runners nativos por SO no CI.
+
+Os dois pipelines são orquestrados por um único workflow,
+[`.github/workflows/release.yml`](../.github/workflows/release.yml), disparado por push de tag
+`vX.Y.Z`: primeiro empacota a GUI nos três SOs, depois roda o GoReleaser (que recebe os
+instaladores da GUI via `release.extra_files` e publica tudo — CLI, TUI e GUI — num único GitHub
+Release).
+
+Testar localmente sem publicar nada (não precisa de tag real):
+
+```bash
+goreleaser check                          # valida o .goreleaser.yaml
+goreleaser release --snapshot --clean     # build completo em dist/, sem publicar
+```
+
+Cortar um release de verdade:
+
+```bash
+git tag vX.Y.Z
+git push --tags   # dispara o workflow de release
+```
+
+**Fora de escopo por decisão consciente (ver spec seção 7)**: Homebrew tap/Scoop/AUR próprio
+(só GitHub Releases por ora) e assinatura de código (Authenticode/notarization) — sem
+certificado disponível hoje, os binários/instaladores vão gerar aviso do SmartScreen/Gatekeeper.

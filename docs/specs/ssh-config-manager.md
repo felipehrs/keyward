@@ -410,10 +410,21 @@ vez de copiar arquivos de config inteiros. Pacote é um `.tar.gz` (`manifest.jso
   absoluto original**, não pular. Import trata como entrada não confiável (seção 6).
 - [x] ~~Colisão de nome de arquivo de chave no import~~ — **decidido em 2026-08-03**: além de
   Skip/Overwrite, oferece **importar sob nome alternativo**, preservando as duas chaves.
-- [ ] Estratégia de empacotamento/distribuição por plataforma (ex. instalador MSI no Windows,
-  pacote `.deb`/`.rpm`/AUR no Linux, `.dmg`/Homebrew no macOS) — **adiado deliberadamente**: só
-  faz sentido decidir com um binário funcional em mãos; entra na lista de pontos em aberto de
-  novo quando o MVP estiver implementado.
+- [x] ~~Estratégia de empacotamento/distribuição por plataforma~~ — **decidido em 2026-08-03**:
+  duas ferramentas, cada uma cobrindo o que já faz bem, em vez de uma só tentando cobrir tudo.
+  [GoReleaser](https://goreleaser.com/) para `cmd/cli`/`cmd/tui` — Go puro, sem cgo, cross-compile
+  nativo do próprio Go, exatamente o caso de uso que a ferramenta foi feita para resolver.
+  GoReleaser **não** cobre a GUI: cgo, embed de webview e empacotamento nativo por SO (NSIS/MSIX
+  no Windows, AppImage/`.deb`/`.rpm`/AUR no Linux, `.app`/`.dmg` no macOS) estão fora do modelo
+  `builds:` dele, e o tooling do próprio Wails (`wails3 task package`, gerado pelo scaffold do
+  `internal/adapter/gui/Taskfile.yml`) já resolve isso — reaproveitado como está, sem duplicar
+  lógica. Os dois pipelines rodam coordenados por um único workflow
+  (`.github/workflows/release.yml`, disparado por tag `vX.Y.Z`), publicando um único GitHub
+  Release com os artefatos dos dois. Escopo do primeiro lançamento, deliberadamente enxuto: só
+  GitHub Releases (sem Homebrew tap/Scoop/AUR próprio — fica para quando houver demanda real) e
+  sem assinatura de código (sem certificado Authenticode/Apple Developer ID hoje — mesmo padrão
+  de risco aceito e documentado já usado para outras decisões desta seção, ex. gap de ACL no
+  Windows). Detalhes de comando em `docs/build.md`, seção "Empacotamento e release".
 - [ ] Layout de formulário nas telas de listagem da GUI (`HostsPage`/`KeysPage`) — hoje o
   formulário de criação/edição fica sempre visível, embutido diretamente abaixo da tabela
   (`internal/adapter/gui/frontend/src/pages/hostsPage.ts`/`keysPage.ts`), o que compete
