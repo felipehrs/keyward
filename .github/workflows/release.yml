@@ -86,16 +86,18 @@ jobs:
       # A GUI é buildada PRIMEIRO e renomeada na sequência: `wails3 task
       # build` sempre emite bin/keyward, que é exatamente o nome do binário
       # da CLI — inverter a ordem faria um sobrescrever o outro.
+      # CGO_ENABLED=0 vai por comando, NÃO no env do step: a GUI do Linux
+      # precisa de cgo (o Taskfile do Wails força CGO_ENABLED=1), e um
+      # env de step vaza pra dentro do `wails3 task build`, fazendo o
+      # pacote application do Wails falhar com "undefined: pointer".
       - name: Build all three binaries (Linux)
         if: matrix.platform == 'linux'
         working-directory: internal/adapter/gui
-        env:
-          CGO_ENABLED: "0"
         run: |
           wails3 task build
           mv bin/keyward bin/keyward-gui
-          go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward     github.com/felipehrs/keyward/cmd/cli
-          go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward-tui github.com/felipehrs/keyward/cmd/tui
+          CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward     github.com/felipehrs/keyward/cmd/cli
+          CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward-tui github.com/felipehrs/keyward/cmd/tui
 
       - name: Assemble archive and packages (Linux)
         if: matrix.platform == 'linux'
@@ -115,17 +117,18 @@ jobs:
       # ---------------------------------------------------------------
       # Windows
       # ---------------------------------------------------------------
+      # CGO_ENABLED por comando pelo mesmo motivo do Linux (ver acima) —
+      # aqui a GUI do Windows já usa CGO_ENABLED=0 por default, mas deixar
+      # no env do step seria a mesma armadilha esperando acontecer.
       - name: Build all three binaries (Windows)
         if: matrix.platform == 'windows'
         working-directory: internal/adapter/gui
         shell: bash
-        env:
-          CGO_ENABLED: "0"
         run: |
           wails3 task build
           mv bin/keyward.exe bin/keyward-gui.exe
-          go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward.exe     github.com/felipehrs/keyward/cmd/cli
-          go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward-tui.exe github.com/felipehrs/keyward/cmd/tui
+          CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward.exe     github.com/felipehrs/keyward/cmd/cli
+          CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward-tui.exe github.com/felipehrs/keyward/cmd/tui
 
       - name: Assemble archive (Windows)
         if: matrix.platform == 'windows'
