@@ -18,7 +18,13 @@ interfaces: CLI, TUI e GUI desktop.
 - [x] `cmd/tui` — TUI via Bubble Tea, cobrindo hosts (listar/adicionar/editar/remover), chaves
   (listar com destaque de expiração/gerar/detalhe/editar metadata/registrar órfã/unregister),
   configurações e backup (export/import com resolução de conflito item a item)
-- [ ] `internal/adapter/gui` — GUI desktop via Wails (ainda placeholder)
+- [x] `internal/adapter/gui` — GUI desktop via Wails v3, cobrindo hosts, chaves (com destaque de
+  expiração/gerar/registrar órfã/editar metadata/unregister), configurações e backup
+  (export/import com resolução de conflito item a item) — paridade funcional com a TUI. Backend
+  (`app_*.go`/`dto_*.go`) tem 40 testes automatizados; a interação real do frontend (renderização,
+  diálogos nativos de arquivo, cliques) só foi verificada por build/execução sem erro, não por
+  teste de UI interativo — não há test runner de frontend configurado (decisão consciente, para
+  não empilhar mais risco de toolchain sobre o do próprio Wails v3, ainda em beta)
 - [ ] Empacotamento/distribuição por plataforma (MSI, .deb/.rpm, .dmg)
 
 ## Funcionalidades
@@ -65,13 +71,27 @@ go run ./cmd/cli --help   # lista os comandos disponíveis da CLI
 go run ./cmd/tui          # abre a interface interativa de terminal
 ```
 
-A CLI (`cmd/cli`) já cobre todos os métodos de `KeyService`, `ConfigService` e `BackupService` —
-`keyward key ...`, `keyward host ...`, `keyward backup ...`. A TUI (`cmd/tui`) cobre o mesmo
-conjunto de operações de forma interativa. GUI ainda está em construção.
+```bash
+cd internal/adapter/gui
+wails3 dev          # abre a GUI em modo desenvolvimento (hot reload do frontend)
+wails3 task build   # build de produção (backend + frontend + binário nativo em bin/)
+wails3 task run     # roda o binário já buildado
+```
 
-Para apontar a TUI para um `~/.ssh` e `metadata.json` de teste (sem tocar no ambiente real do
-usuário), use as variáveis de ambiente `KEYWARD_CONFIG`, `KEYWARD_KEY_DIR` e `KEYWARD_METADATA` —
-ver [`cmd/tui/main.go`](cmd/tui/main.go).
+A CLI (`cmd/cli`) já cobre todos os métodos de `KeyService`, `ConfigService` e `BackupService` —
+`keyward key ...`, `keyward host ...`, `keyward backup ...`. A TUI (`cmd/tui`) e a GUI
+(`internal/adapter/gui`) cobrem o mesmo conjunto de operações, cada uma na sua interface.
+
+Para apontar a TUI ou a GUI para um `~/.ssh` e `metadata.json` de teste (sem tocar no ambiente
+real do usuário), use as variáveis de ambiente `KEYWARD_CONFIG`, `KEYWARD_KEY_DIR` e
+`KEYWARD_METADATA` — ver [`cmd/tui/main.go`](cmd/tui/main.go) e
+[`internal/adapter/gui/main.go`](internal/adapter/gui/main.go).
+
+A GUI requer o CLI do Wails v3 (`go install github.com/wailsapp/wails/v3/cmd/wails3@latest`) e
+Node.js/npm no PATH — rode `wails3 doctor` pra conferir dependências de sistema por plataforma
+(WebView2 no Windows, GTK3+WebKit2GTK no Linux, Xcode Command Line Tools no macOS). `go build
+./...`/`go test ./...` na raiz do repo cobrem o pacote Go da GUI normalmente; só os comandos
+`wails3 ...` acima exigem rodar a partir de `internal/adapter/gui/`.
 
 ## Segurança
 

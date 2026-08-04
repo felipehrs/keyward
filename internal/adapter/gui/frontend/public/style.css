@@ -1,0 +1,394 @@
+:root {
+    color-scheme: dark;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+        sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #111114;
+    color: #f4f6fb;
+}
+
+.shell {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    height: 100vh;
+}
+
+.sidebar {
+    background: #17171b;
+    border-right: 1px solid #2a2a30;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 0.75rem;
+    gap: 0.25rem;
+}
+
+.brand {
+    font-weight: 700;
+    padding: 0.5rem 0.5rem 1rem;
+}
+
+.nav-btn {
+    background: transparent;
+    border: none;
+    color: #9aa6c0;
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.nav-btn:hover:not(:disabled) {
+    background: #1f1f26;
+}
+
+.nav-btn.active {
+    background: #26262f;
+    color: #f4f6fb;
+}
+
+.nav-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.content {
+    padding: 2rem;
+    overflow-y: auto;
+    /* min-width: 0 evita o "grid blowout": sem isso, o item de grid nunca
+       encolhe além do conteúdo mínimo da tabela (paths longos sem espaço
+       pra quebrar linha), o que forçava a página inteira a ficar mais
+       larga que a viewport e sobrar rolagem horizontal indevida. */
+    min-width: 0;
+}
+
+.error {
+    background: #4a1414;
+    color: #ffb4b4;
+    border: 1px solid #7a2222;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.saved {
+    background: rgba(46, 160, 67, 0.15);
+    color: #4ade80;
+    border: 1px solid #2ea043;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.table-scroll {
+    overflow-x: auto;
+    margin-bottom: 2rem;
+}
+
+table.data-table {
+    width: 100%;
+    min-width: 640px;
+    border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+    text-align: left;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid #2a2a30;
+    font-size: 0.9rem;
+}
+
+.data-table th {
+    color: #9aa6c0;
+    font-weight: 600;
+}
+
+.muted {
+    color: #9aa6c0;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-ok {
+    background: rgba(46, 160, 67, 0.15);
+    color: #4ade80;
+}
+
+.badge-warn {
+    background: rgba(255, 170, 0, 0.15);
+    color: #ffb020;
+}
+
+.badge-danger {
+    background: rgba(255, 45, 114, 0.15);
+    color: #ff2d72;
+}
+
+.badge-muted {
+    background: rgba(154, 166, 192, 0.15);
+    color: #9aa6c0;
+}
+
+.entity-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 320px;
+}
+
+.entity-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    color: #9aa6c0;
+}
+
+.entity-form input {
+    background: #1b1b20;
+    border: 1px solid #2a2a30;
+    border-radius: 6px;
+    color: #f4f6fb;
+    padding: 0.4rem 0.5rem;
+}
+
+.form-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.entity-form button {
+    background: #ff2d72;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+}
+
+.entity-form #cancel-edit-btn {
+    background: #2a2a30;
+    color: #f4f6fb;
+}
+
+.data-table td button {
+    background: #1b1b20;
+    border: 1px solid #2a2a30;
+    border-radius: 6px;
+    color: #f4f6fb;
+    padding: 0.25rem 0.6rem;
+    margin-right: 0.35rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+/* ConfirmDialog — modal reutilizável pra toda ação destrutiva. */
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.confirm-box {
+    background: #1b1b20;
+    border: 1px solid #2a2a30;
+    border-radius: 10px;
+    padding: 1.5rem;
+    max-width: 420px;
+    width: 90%;
+}
+
+.confirm-box.confirm-danger {
+    border-color: #ff2d72;
+    box-shadow: 0 0 0 1px #ff2d72;
+}
+
+.confirm-box h3 {
+    margin: 0 0 0.75rem;
+}
+
+.confirm-box p {
+    color: #9aa6c0;
+    margin: 0 0 1.25rem;
+    white-space: pre-wrap;
+}
+
+.confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.confirm-actions button {
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+}
+
+.confirm-cancel {
+    background: #2a2a30;
+    color: #f4f6fb;
+}
+
+.confirm-confirm {
+    background: #ff2d72;
+    color: white;
+}
+
+/* Backup — export/import */
+.tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.tab-btn {
+    background: transparent;
+    border: 1px solid #2a2a30;
+    border-radius: 6px;
+    color: #9aa6c0;
+    padding: 0.4rem 0.9rem;
+    cursor: pointer;
+}
+
+.tab-btn.active {
+    background: #26262f;
+    color: #f4f6fb;
+}
+
+.warning-high-contrast {
+    background: #ff2d72;
+    color: white;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.checkbox-list {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid #2a2a30;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.15rem 0;
+}
+
+.key-select-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.25rem 0;
+    border-bottom: 1px solid #1f1f26;
+}
+
+.key-select-row label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.entity-form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    color: #9aa6c0;
+    max-width: 480px;
+    margin-bottom: 1rem;
+}
+
+.dest-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.dest-row input {
+    flex: 1;
+    background: #1b1b20;
+    border: 1px solid #2a2a30;
+    border-radius: 6px;
+    color: #f4f6fb;
+    padding: 0.4rem 0.5rem;
+}
+
+.dest-row button {
+    background: #1b1b20;
+    border: 1px solid #2a2a30;
+    border-radius: 6px;
+    color: #f4f6fb;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.preview-list {
+    margin: 0 0 1rem;
+    padding-left: 1.25rem;
+    font-size: 0.9rem;
+}
+
+.preview-list li {
+    padding: 0.1rem 0;
+}
+
+.conflict-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #1f1f26;
+    font-size: 0.9rem;
+}
+
+.conflict-row select {
+    background: #1b1b20;
+    border: 1px solid #2a2a30;
+    border-radius: 6px;
+    color: #f4f6fb;
+    padding: 0.2rem 0.4rem;
+}
+
+#apply-import-btn {
+    margin-top: 1rem;
+}
+
+#export-btn,
+#preview-btn,
+#apply-import-btn {
+    background: #ff2d72;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+}

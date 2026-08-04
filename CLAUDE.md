@@ -32,12 +32,15 @@ internal/adapter/gui/frontend/ → HTML/CSS/JS, fala só com app.go via bindings
 
 ## Estado atual do código
 
-`core` já implementa boa parte do MVP (parsing/escrita de `~/.ssh/config`, geração de chaves,
-metadata/reconciliação, backup export/import). Lint/CI (`golangci-lint` + `depguard` + GitHub
-Actions) e `cmd/cli` (CLI via Cobra, cobertura completa das três interfaces do `core`) estão
-implementados. `cmd/tui` e `internal/adapter/gui` ainda são placeholders/esqueletos. O
-[`README.md`](README.md), seção "Status do desenvolvimento", é a fonte rápida de verdade sobre o
-que está pronto — mantenha-a em sincronia (ver regra abaixo) em vez de confiar só nesta descrição.
+As três interfaces do MVP estão implementadas: `core` (parsing/escrita de `~/.ssh/config`,
+geração de chaves, metadata/reconciliação, backup export/import), `cmd/cli` (Cobra, cobertura
+completa das três interfaces do `core`), `cmd/tui` (Bubble Tea) e `internal/adapter/gui` (Wails
+v3, paridade funcional com a TUI — `main.go` fica direto em `internal/adapter/gui/`, sem
+`cmd/gui/`, por exigência do tooling do `wails3`). Lint/CI (`golangci-lint` + `depguard` + GitHub
+Actions) também implementado. Falta só empacotamento/distribuição por plataforma (MSI/.deb-.rpm/
+.dmg). O [`README.md`](README.md), seção "Status do desenvolvimento", é a fonte rápida de verdade
+sobre o que está pronto — mantenha-a em sincronia (ver regra abaixo) em vez de confiar só nesta
+descrição.
 
 **Sempre que uma funcionalidade for adicionada, concluída ou remodelada de forma relevante,
 atualize a seção "Status do desenvolvimento" do `README.md` no mesmo commit** — ela é o status

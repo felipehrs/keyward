@@ -414,6 +414,15 @@ vez de copiar arquivos de config inteiros. Pacote é um `.tar.gz` (`manifest.jso
   pacote `.deb`/`.rpm`/AUR no Linux, `.dmg`/Homebrew no macOS) — **adiado deliberadamente**: só
   faz sentido decidir com um binário funcional em mãos; entra na lista de pontos em aberto de
   novo quando o MVP estiver implementado.
+- [ ] Layout de formulário nas telas de listagem da GUI (`HostsPage`/`KeysPage`) — hoje o
+  formulário de criação/edição fica sempre visível, embutido diretamente abaixo da tabela
+  (`internal/adapter/gui/frontend/src/pages/hostsPage.ts`/`keysPage.ts`), o que compete
+  visualmente com a listagem em vez de ser uma ação deliberada do usuário. Melhoria identificada
+  ao testar manualmente a GUI pela primeira vez (2026-08-03): mover pra uma visualização própria,
+  provavelmente um modal (mesmo padrão de overlay já usado pelo `ConfirmDialog`,
+  `internal/adapter/gui/frontend/src/confirmDialog.ts`) ou uma tela de detalhe separada — decisão
+  de qual das duas, e se vale generalizar um componente de modal reutilizável além do
+  `ConfirmDialog`, fica para quando essa melhoria for priorizada.
 
 ---
 

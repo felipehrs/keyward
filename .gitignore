@@ -2,3 +2,10 @@
 *.exe
 *.test
 *.out
+
+# GUI (Wails) — artefatos gerados, nunca versionados
+internal/adapter/gui/.task/
+internal/adapter/gui/bin/
+internal/adapter/gui/frontend/node_modules/
+internal/adapter/gui/frontend/dist/
+internal/adapter/gui/frontend/bindings/
