@@ -176,6 +176,34 @@ export function renderKeysPage(root: HTMLElement) {
         }
     }
 
+    // openRegisterAgentModal anota (Label/Notes/ExpiresAt) uma identidade já
+    // oferecida por um ssh-agent, mas ainda sem registro de metadata —
+    // espelha openRegisterModal, mas identifica a chave por fingerprint em
+    // vez de privateKeyPath (não há arquivo local envolvido).
+    async function openRegisterAgentModal(key: KeyDTO) {
+        const ok = await formModal({
+            title: "Registrar chave de agente " + key.metadata.fingerprint,
+            submitLabel: "Registrar",
+            fields: [
+                { name: "label", label: "Rótulo" },
+                { name: "notes", label: "Notas" },
+                { name: "expiresAt", label: "Expira em", type: "date" },
+            ],
+            onSubmit: async (values) => {
+                await App.RegisterAgentKey({
+                    fingerprint: key.metadata.fingerprint,
+                    label: values.label,
+                    notes: values.notes,
+                    expiresAt: values.expiresAt || undefined,
+                });
+            },
+        });
+        if (ok) {
+            showSuccess("Chave de agente registrada.");
+            await reload();
+        }
+    }
+
     async function openEditModal(key: KeyDTO) {
         const ok = await formModal({
             title: "Editar " + (key.metadata.label || key.metadata.fingerprint),
@@ -220,10 +248,14 @@ export function renderKeysPage(root: HTMLElement) {
     }
 
     async function unregisterKey(key: KeyDTO) {
-        const ok = await confirmDialog({
-            title: "Remover registro de metadata?",
-            body: `O arquivo da chave permanece em disco — só o registro de metadata (rótulo, notas, expiração) é removido. A chave volta a aparecer como "sem registro de metadata".`,
-        });
+        // O texto de confirmação muda pra missingFile: não há arquivo em
+        // disco pra "permanecer" (é exatamente por isso que o status é
+        // missingFile) — dizer isso indiscriminadamente seria enganoso.
+        const body =
+            key.status === "missingFile"
+                ? `Nenhum arquivo correspondente foi encontrado em disco — só o registro de metadata (rótulo, notas, expiração) é removido.`
+                : `O arquivo da chave permanece em disco — só o registro de metadata (rótulo, notas, expiração) é removido. A chave volta a aparecer como "sem registro de metadata".`;
+        const ok = await confirmDialog({ title: "Remover registro de metadata?", body });
         if (!ok) return;
         try {
             await App.UnregisterKey(key.metadata.fingerprint);
@@ -269,10 +301,17 @@ export function renderKeysPage(root: HTMLElement) {
 
             const actions = document.createElement("td");
             // Chaves de agente sem PrivateKeyPath não têm arquivo pra
-            // "Registrar" adotar (RegisterKey exige privateKeyPath) — a
-            // ação de rotação/exclusão de arquivo fica indisponível pra
-            // origem agente (spec ssh-agent-support, requisito 8).
-            if (k.status === "unregistered" && k.source !== "agent") {
+            // RegisterKey adotar — usam RegisterAgentKey (por fingerprint)
+            // em vez disso. Rotação/exclusão de arquivo continua
+            // indisponível pra origem agente (spec ssh-agent-support,
+            // requisito 8).
+            if (k.status === "unregistered" && k.source === "agent") {
+                const registerBtn = document.createElement("button");
+                registerBtn.type = "button";
+                registerBtn.textContent = "Registrar";
+                registerBtn.addEventListener("click", () => void openRegisterAgentModal(k));
+                actions.appendChild(registerBtn);
+            } else if (k.status === "unregistered") {
                 const registerBtn = document.createElement("button");
                 registerBtn.type = "button";
                 registerBtn.textContent = "Registrar";
@@ -290,6 +329,19 @@ export function renderKeysPage(root: HTMLElement) {
                 unregisterBtn.addEventListener("click", () => void unregisterKey(k));
 
                 actions.append(editBtn, unregisterBtn);
+            } else if (k.status === "missingFile") {
+                // Sem arquivo em disco, não há o que "Editar" além de
+                // metadata — mas o registro pode ficar preso indefinidamente
+                // (ex. bloqueando RegisterAgentKey pro mesmo fingerprint,
+                // caso a mesma chave apareça também num ssh-agent) sem uma
+                // forma de removê-lo pela GUI. UnregisterKey já era seguro
+                // pra esse caso (só mexe em metadata.json); só faltava o
+                // botão.
+                const unregisterBtn = document.createElement("button");
+                unregisterBtn.type = "button";
+                unregisterBtn.textContent = "Remover registro";
+                unregisterBtn.addEventListener("click", () => void unregisterKey(k));
+                actions.appendChild(unregisterBtn);
             }
 
             row.append(label, fingerprint, source, algorithm, status, expires, actions);

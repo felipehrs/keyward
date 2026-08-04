@@ -22,6 +22,23 @@ func (a *App) DetectAgent() (AgentInfoDTO, error) {
 	return agentInfoToDTO(info), nil
 }
 
+// RegisterAgentKey anota (Label/Notes/ExpiresAt) uma identidade já
+// oferecida por um ssh-agent, mas ainda sem registro de metadata
+// (KeyStatusUnregistered, Source == KeySourceAgent) — espelha RegisterKey,
+// mas identifica a chave por fingerprint (já exposto por ListKeys pra esse
+// caso, ver core/keys_agent.go) em vez de um caminho de arquivo.
+func (a *App) RegisterAgentKey(in RegisterAgentKeyInput) (KeyDTO, error) {
+	patch, err := in.toCorePatch()
+	if err != nil {
+		return KeyDTO{}, err
+	}
+	key, err := a.keySvc.RegisterAgentKey(in.Fingerprint, patch)
+	if err != nil {
+		return KeyDTO{}, mapErr(err)
+	}
+	return keyToDTO(key), nil
+}
+
 // LinkHostKey persiste um vínculo informativo entre um host e uma
 // identidade de ssh-agent — nunca escreve IdentityFile em ~/.ssh/config
 // (isso é uma ação separada, via ReplaceHost). Chamar de novo com o mesmo

@@ -41,3 +41,28 @@ type UnlinkHostKeyInput struct {
 	HostKey             string `json:"hostKey"`
 	AgentKeyFingerprint string `json:"agentKeyFingerprint"`
 }
+
+// RegisterAgentKeyInput é a entrada de RegisterAgentKey — mesma semântica
+// de RegisterKeyInput (sempre um registro novo, Label/Notes sempre
+// atribuídos mesmo que vazios), mas sem PrivateKeyPath: a identidade já
+// vem do agente, não há arquivo a apontar.
+type RegisterAgentKeyInput struct {
+	Fingerprint string  `json:"fingerprint"`
+	Label       string  `json:"label,omitempty"`
+	Notes       string  `json:"notes,omitempty"`
+	ExpiresAt   *string `json:"expiresAt,omitempty"`
+}
+
+func (in RegisterAgentKeyInput) toCorePatch() (core.KeyMetadataPatch, error) {
+	expiresAt, err := parseDateOnly(in.ExpiresAt)
+	if err != nil {
+		return core.KeyMetadataPatch{}, err
+	}
+	label := in.Label
+	notes := in.Notes
+	patch := core.KeyMetadataPatch{Label: &label, Notes: &notes}
+	if expiresAt != nil {
+		patch.ExpiresAt = &expiresAt
+	}
+	return patch, nil
+}
