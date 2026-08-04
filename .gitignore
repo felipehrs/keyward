@@ -14,5 +14,13 @@
 internal/adapter/gui/.task/
 internal/adapter/gui/bin/
 internal/adapter/gui/frontend/node_modules/
-internal/adapter/gui/frontend/dist/
 internal/adapter/gui/frontend/bindings/
+
+# frontend/dist/ é gerado pelo vite build, mas main.go tem
+# `//go:embed all:frontend/dist` — sem NENHUM arquivo ali, `go build`/`go
+# vet` falham em qualquer checkout limpo (é exatamente o que quebrou o CI:
+# a pasta nem existe antes do primeiro `npm run build`). .gitkeep fica
+# versionado só pra isso; o resto do conteúdo real (gerado) continua
+# ignorado.
+internal/adapter/gui/frontend/dist/*
+!internal/adapter/gui/frontend/dist/.gitkeep
