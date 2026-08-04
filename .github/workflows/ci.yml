@@ -21,6 +21,16 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # internal/adapter/gui importa o Wails v3, que faz um check cgo via
+      # pkg-config (gtk4/webkitgtk-6.0) já em tempo de compilação — sem isso,
+      # `go vet`/`go build`/lint na raiz falham pra qualquer alvo que inclua
+      # esse pacote, mesmo sem gerar nenhum binário GUI de verdade (mesma
+      # dependência que o job "package-gui" do release.yml já tem).
+      - name: Install GTK4/WebKitGTK dev libs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
       - name: go vet
         run: go vet ./...
 
