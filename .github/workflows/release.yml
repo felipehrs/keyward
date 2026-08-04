@@ -47,19 +47,29 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install wails3 CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-
-      - name: Install NSIS (Windows)
-        if: matrix.platform == 'windows'
-        run: choco install nsis -y
-        shell: bash
-
+      # Precisa vir ANTES do "go install .../wails3" — o pacote
+      # internal/operatingsystem do próprio wails3 faz um check de cgo via
+      # pkg-config (gtk4/webkitgtk-6.0) já na hora de *compilar* o CLI, não
+      # só na hora de empacotar. Sem isso instalado antes, `go install`
+      # falha com "Package gtk4 was not found in the pkg-config search path".
       - name: Install GTK4/WebKitGTK dev libs (Linux)
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      # choco instala o NSIS, mas o PATH atualizado pelo instalador não é
+      # herdado automaticamente pelos passos seguintes do job — precisa ser
+      # adicionado explicitamente ao $GITHUB_PATH.
+      - name: Install NSIS (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          choco install nsis -y
+          echo 'C:\Program Files (x86)\NSIS' >> "$GITHUB_PATH"
+        shell: bash
+
+      - name: Install wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
       # nfpm.yaml (build/linux/nfpm/nfpm.yaml) interpola ${VERSION} no
       # metadata do pacote deb/rpm/AUR — sem isso, o pacote sai com uma
@@ -76,9 +86,12 @@ jobs:
         if: matrix.platform == 'linux'
         run: wails3 task package
 
+      # A task "package:dmg" só existe namespaced sob "darwin:" (o Taskfile
+      # raiz não expõe um atalho pra ela — só "package", que gera o .app
+      # sem .dmg).
       - name: Package GUI (macOS — .dmg)
         if: matrix.platform == 'darwin'
-        run: wails3 task package:dmg
+        run: wails3 task darwin:package:dmg
 
       # Cada plataforma gera formatos diferentes em bin/ (inclusive o
       # binário cru e, no macOS, o .app como diretório) — filtra só os
