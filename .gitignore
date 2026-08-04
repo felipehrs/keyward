@@ -3,6 +3,13 @@
 *.test
 *.out
 
+# GoReleaser — saída local (goreleaser release --snapshot) e os
+# instaladores da GUI baixados pelo job "goreleaser" do workflow de release
+# (ver .goreleaser.yaml/release.extra_files) — sem isso, o download deixa o
+# checkout "sujo" e o GoReleaser recusa rodar ("git is in a dirty state").
+/dist/
+/dist-gui/
+
 # GUI (Wails) — artefatos gerados, nunca versionados
 internal/adapter/gui/.task/
 internal/adapter/gui/bin/
