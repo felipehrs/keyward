@@ -5,10 +5,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/felipehrs/keyward/core"
+	"github.com/felipehrs/keyward/internal/sshagent"
 )
 
 // version é preenchido em tempo de build via `-ldflags "-X main.version=..."`
@@ -33,6 +35,12 @@ func main() {
 	metadataPath := os.Getenv("KEYWARD_METADATA")
 
 	keySvc := core.NewFileKeyService(keyDir, metadataPath)
+	if runtime.GOOS == "windows" {
+		// No Windows, ssh-agent (inclusive o do OpenSSH e o do 1Password) é
+		// acessado via named pipe, não via Unix domain socket — o dial
+		// default de FileKeyService só cobre Unix. Ver internal/sshagent.
+		keySvc.AgentDial = sshagent.Dial
+	}
 	configSvc := core.NewFileConfigService(configPath)
 	backupSvc := core.NewFileBackupService(configPath, keyDir, metadataPath)
 

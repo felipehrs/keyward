@@ -12,10 +12,12 @@ import (
 	"embed"
 	"log"
 	"os"
+	"runtime"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/felipehrs/keyward/core"
+	"github.com/felipehrs/keyward/internal/sshagent"
 )
 
 //go:embed all:frontend/dist
@@ -31,6 +33,13 @@ func main() {
 	metadataPath := os.Getenv("KEYWARD_METADATA")
 
 	keySvc := core.NewFileKeyService(keyDir, metadataPath)
+	// golang.org/x/crypto/ssh/agent não fala diretamente com named pipe do
+	// Windows — precisa do go-winio (internal/sshagent/dial_windows.go). Nas
+	// demais plataformas o dial padrão do core (Unix domain socket via
+	// SSH_AUTH_SOCK) já basta, sem depender de sshagent.
+	if runtime.GOOS == "windows" {
+		keySvc.AgentDial = sshagent.Dial
+	}
 	configSvc := core.NewFileConfigService(configPath)
 	backupSvc := core.NewFileBackupService(configPath, keyDir, metadataPath)
 

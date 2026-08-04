@@ -100,6 +100,9 @@ func reconcileKeys(dir string, mf metadataFile) ([]Key, error) {
 
 	metaByFingerprint := make(map[string]KeyMetadata, len(mf.Keys))
 	for _, m := range mf.Keys {
+		if m.Source != KeySourceFile {
+			continue // registros de origem agente são reconciliados por reconcileAgentKeys
+		}
 		metaByFingerprint[m.Fingerprint] = m
 	}
 

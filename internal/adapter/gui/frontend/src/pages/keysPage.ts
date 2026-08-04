@@ -17,9 +17,22 @@ function statusLabel(k: KeyDTO): { text: string; className: string } {
             return { text: "sem registro de metadata", className: "badge badge-muted" };
         case "missingFile":
             return { text: "arquivo ausente em disco", className: "badge badge-muted" };
+        case "agentOffline":
+            return { text: "agente indisponível no momento", className: "badge badge-warn" };
         default:
             return { text: "OK", className: "badge badge-ok" };
     }
+}
+
+// sourceLabel identifica visualmente a origem de uma chave — sem isso o
+// usuário não teria como distinguir uma chave de arquivo de uma oferecida
+// por um ssh-agent (spec ssh-agent-support, requisito 8).
+function sourceLabel(k: KeyDTO): { text: string; className: string } {
+    if (k.source !== "agent") {
+        return { text: "arquivo", className: "badge badge-muted" };
+    }
+    const name = k.agentName === "1password" ? "1Password" : "Agente SSH";
+    return { text: "🔑 " + name, className: "badge badge-ok" };
 }
 
 export function renderKeysPage(root: HTMLElement) {
@@ -28,6 +41,7 @@ export function renderKeysPage(root: HTMLElement) {
             <h1>Chaves</h1>
             <button type="button" id="generate-btn" class="btn-primary">+ Gerar chave</button>
         </div>
+        <p id="agent-banner" class="muted" hidden>nenhum agente SSH detectado</p>
         <div id="error" class="error" hidden></div>
         <div id="success" class="saved" hidden></div>
         <div class="table-scroll">
@@ -36,6 +50,7 @@ export function renderKeysPage(root: HTMLElement) {
                 <tr>
                     <th>Rótulo</th>
                     <th>Fingerprint</th>
+                    <th>Origem</th>
                     <th>Algoritmo</th>
                     <th>Status</th>
                     <th>Expira em</th>
@@ -51,7 +66,20 @@ export function renderKeysPage(root: HTMLElement) {
     const tableBody = root.querySelector("#keys-body") as HTMLTableSectionElement;
     const emptyState = root.querySelector("#empty-state") as HTMLParagraphElement;
     const generateBtn = root.querySelector("#generate-btn") as HTMLButtonElement;
+    const agentBanner = root.querySelector("#agent-banner") as HTMLParagraphElement;
     const { showError, showSuccess, clear } = createFeedback(root);
+
+    // checkAgent alimenta o aviso discreto "nenhum agente SSH detectado" —
+    // falha de sondagem não deve virar erro bloqueante na página (spec
+    // ssh-agent-support, fluxo "nenhum agente acessível").
+    async function checkAgent() {
+        try {
+            const info = await App.DetectAgent();
+            agentBanner.hidden = info.detected;
+        } catch {
+            agentBanner.hidden = false;
+        }
+    }
 
     // submitGenerate é recursivo: se o core recusar por já existir um
     // arquivo com esse nome, abre um confirm por cima do próprio modal de
@@ -219,6 +247,13 @@ export function renderKeysPage(root: HTMLElement) {
             fingerprint.textContent = k.metadata.fingerprint || "-";
             fingerprint.className = "muted";
 
+            const source = document.createElement("td");
+            const sourceBadge = document.createElement("span");
+            const { text: sourceText, className: sourceClassName } = sourceLabel(k);
+            sourceBadge.className = sourceClassName;
+            sourceBadge.textContent = sourceText;
+            source.appendChild(sourceBadge);
+
             const algorithm = document.createElement("td");
             algorithm.textContent = k.algorithm || "-";
 
@@ -233,13 +268,17 @@ export function renderKeysPage(root: HTMLElement) {
             expires.textContent = formatDate(k.metadata.expiresAt);
 
             const actions = document.createElement("td");
-            if (k.status === "unregistered") {
+            // Chaves de agente sem PrivateKeyPath não têm arquivo pra
+            // "Registrar" adotar (RegisterKey exige privateKeyPath) — a
+            // ação de rotação/exclusão de arquivo fica indisponível pra
+            // origem agente (spec ssh-agent-support, requisito 8).
+            if (k.status === "unregistered" && k.source !== "agent") {
                 const registerBtn = document.createElement("button");
                 registerBtn.type = "button";
                 registerBtn.textContent = "Registrar";
                 registerBtn.addEventListener("click", () => void openRegisterModal(k));
                 actions.appendChild(registerBtn);
-            } else if (k.status === "ok") {
+            } else if (k.status === "ok" || k.status === "agentOffline") {
                 const editBtn = document.createElement("button");
                 editBtn.type = "button";
                 editBtn.textContent = "Editar";
@@ -253,7 +292,7 @@ export function renderKeysPage(root: HTMLElement) {
                 actions.append(editBtn, unregisterBtn);
             }
 
-            row.append(label, fingerprint, algorithm, status, expires, actions);
+            row.append(label, fingerprint, source, algorithm, status, expires, actions);
             tableBody.appendChild(row);
         }
     }
@@ -271,4 +310,5 @@ export function renderKeysPage(root: HTMLElement) {
     generateBtn.addEventListener("click", () => void openGenerateModal());
 
     reload();
+    void checkAgent();
 }

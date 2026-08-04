@@ -65,7 +65,7 @@ func TestMenuModel_SelectImplemented_PushesScreen(t *testing.T) {
 
 func TestMenuModel_SelectSettings_PushesSettingsScreen(t *testing.T) {
 	m := newTestMenu(t)
-	for range 3 { // move até "Configurações" (índice 3)
+	for range 4 { // move até "Configurações" (índice 4: Hosts, Chaves, Vínculos, Backup, Configurações)
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 		m = next.(*menuModel)
 	}
@@ -82,12 +82,31 @@ func TestMenuModel_SelectSettings_PushesSettingsScreen(t *testing.T) {
 	}
 }
 
+func TestMenuModel_SelectHostLinks_PushesHostLinksScreen(t *testing.T) {
+	m := newTestMenu(t)
+	for range 2 { // move até "Vínculos de agente" (índice 2)
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = next.(*menuModel)
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("esperava pushScreenMsg")
+	}
+	push, ok := cmd().(pushScreenMsg)
+	if !ok {
+		t.Fatalf("esperava pushScreenMsg, obteve %T", push)
+	}
+	if _, ok := push.screen.(*hostLinksModel); !ok {
+		t.Fatalf("esperava *hostLinksModel, obteve %T", push.screen)
+	}
+}
+
 func TestMenuModel_SelectBackup_PushesBackupMenu(t *testing.T) {
 	m := newTestMenu(t)
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = next.(*menuModel)
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = next.(*menuModel)
+	for range 3 { // move até "Backup" (índice 3)
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = next.(*menuModel)
+	}
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {

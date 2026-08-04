@@ -24,6 +24,7 @@ func newKeyCmd(keySvc core.KeyService) *cobra.Command {
 		newKeyGetCmd(keySvc),
 		newKeyUpdateCmd(keySvc),
 		newKeyRegisterCmd(keySvc),
+		newKeyRegisterAgentCmd(keySvc),
 		newKeyUnregisterCmd(keySvc),
 		newKeySettingsCmd(keySvc),
 	)
@@ -97,20 +98,43 @@ func newKeyGenerateCmd(keySvc core.KeyService) *cobra.Command {
 	return cmd
 }
 
+// keySourceFilter valores aceitos pela flag --source de `key list`.
+const (
+	keySourceFilterAll   = "all"
+	keySourceFilterFile  = "file"
+	keySourceFilterAgent = "agent"
+)
+
 func newKeyListCmd(keySvc core.KeyService) *cobra.Command {
-	return &cobra.Command{
+	var source string
+
+	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "Lista as chaves conhecidas, ordenadas por proximidade de expiração",
+		Short: "Lista as chaves conhecidas (arquivo e agente), ordenadas por proximidade de expiração",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			switch source {
+			case keySourceFilterAll, keySourceFilterFile, keySourceFilterAgent:
+			default:
+				return fmt.Errorf("--source inválido: %q (use %q, %q ou %q)", source, keySourceFilterAll, keySourceFilterFile, keySourceFilterAgent)
+			}
+
 			keys, err := keySvc.ListKeys()
 			if err != nil {
 				return err
 			}
 
+			// Uma única tabela com coluna SOURCE, em vez de duas seções
+			// separadas: segue a mesma convenção já usada por `host list`
+			// (coluna SOURCE com a origem de cada linha) e mantém a chave
+			// ordenada por proximidade de expiração vinda de ListKeys, sem
+			// precisar particionar/reordenar por origem.
 			w := newTableWriter(cmd.OutOrStdout())
-			fmt.Fprintln(w, "FINGERPRINT\tALGO\tLABEL\tSTATUS\tEXPIRES")
+			fmt.Fprintln(w, "FINGERPRINT\tALGO\tLABEL\tSTATUS\tEXPIRES\tSOURCE")
 			attention := false
 			for _, k := range keys {
+				if !keyMatchesSourceFilter(k, source) {
+					continue
+				}
 				status := keyStatusString(k.Status)
 				if k.IsExpired {
 					status = "EXPIRED"
@@ -119,8 +143,8 @@ func newKeyListCmd(keySvc core.KeyService) *cobra.Command {
 					status = "EXPIRING SOON"
 					attention = true
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-					k.Metadata.Fingerprint, k.Algorithm, firstNonEmpty(k.Metadata.Label), status, formatTime(k.Metadata.ExpiresAt))
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+					k.Metadata.Fingerprint, k.Algorithm, firstNonEmpty(k.Metadata.Label), status, formatTime(k.Metadata.ExpiresAt), keySourceString(k))
 			}
 			if err := w.Flush(); err != nil {
 				return err
@@ -133,6 +157,33 @@ func newKeyListCmd(keySvc core.KeyService) *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&source, "source", keySourceFilterAll, "filtra por origem da chave (all|file|agent)")
+	return cmd
+}
+
+// keyMatchesSourceFilter aplica o filtro --source de `key list`.
+func keyMatchesSourceFilter(k core.Key, filter string) bool {
+	switch filter {
+	case keySourceFilterFile:
+		return k.Source == core.KeySourceFile
+	case keySourceFilterAgent:
+		return k.Source == core.KeySourceAgent
+	default:
+		return true
+	}
+}
+
+// keySourceString formata a coluna SOURCE de `key list`, incluindo o nome do
+// agente entre parênteses quando identificado (ex. "agent (1password)").
+func keySourceString(k core.Key) string {
+	if k.Source != core.KeySourceAgent {
+		return "file"
+	}
+	if k.AgentName == "" {
+		return "agent"
+	}
+	return fmt.Sprintf("agent (%s)", k.AgentName)
 }
 
 func keyStatusString(s core.KeyStatus) string {
@@ -143,6 +194,8 @@ func keyStatusString(s core.KeyStatus) string {
 		return "unregistered"
 	case core.KeyStatusMissingFile:
 		return "missing-file"
+	case core.KeyStatusAgentOffline:
+		return "agent-offline"
 	default:
 		return "unknown"
 	}
@@ -258,6 +311,49 @@ func newKeyRegisterCmd(keySvc core.KeyService) *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "chave registrada: %s\n", key.Metadata.Fingerprint)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&label, "label", "", "rótulo da chave")
+	cmd.Flags().StringVar(&notes, "notes", "", "notas livres")
+	cmd.Flags().StringVar(&expiresAt, "expires-at", "", "data de expiração ("+dateLayout+")")
+
+	return cmd
+}
+
+func newKeyRegisterAgentCmd(keySvc core.KeyService) *cobra.Command {
+	var (
+		label     string
+		notes     string
+		expiresAt string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "register-agent <fingerprint>",
+		Short: "Registra na metadata uma identidade oferecida por um ssh-agent, sem registro",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			expires, err := parseExpiresAt(expiresAt)
+			if err != nil {
+				return err
+			}
+			patch := core.KeyMetadataPatch{}
+			if cmd.Flags().Changed("label") {
+				patch.Label = &label
+			}
+			if cmd.Flags().Changed("notes") {
+				patch.Notes = &notes
+			}
+			if cmd.Flags().Changed("expires-at") {
+				patch.ExpiresAt = &expires
+			}
+
+			key, err := keySvc.RegisterAgentKey(args[0], patch)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "chave de agente registrada: %s\n", key.Metadata.Fingerprint)
 			return nil
 		},
 	}

@@ -16,7 +16,7 @@ func newRootCmd(keySvc core.KeyService, configSvc core.ConfigService, backupSvc 
 
 	cmd.AddCommand(
 		newKeyCmd(keySvc),
-		newHostCmd(configSvc),
+		newHostCmd(configSvc, keySvc),
 		newBackupCmd(backupSvc, keySvc, configSvc),
 	)
 	return cmd

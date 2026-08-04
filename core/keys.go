@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -13,6 +14,11 @@ import (
 // ErrKeyNotFound é retornado quando um fingerprint não corresponde a
 // nenhuma chave conhecida (nem em disco, nem em metadata.json).
 var ErrKeyNotFound = errors.New("keyward: chave não encontrada")
+
+// ErrHostLinkNotFound é retornado por UnlinkHostKey quando o par
+// (hostKey, agentKeyFingerprint) não corresponde a nenhum HostMetadata
+// persistido.
+var ErrHostLinkNotFound = errors.New("keyward: vínculo host/chave não encontrado")
 
 // KeyStatus indica o resultado da reconciliação entre ~/.ssh/ e
 // metadata.json para uma determinada chave (spec seção 5.3.2).
@@ -28,6 +34,26 @@ const (
 	// KeyStatusMissingFile: registro em metadata.json cujo fingerprint não
 	// corresponde a nenhum par de arquivos encontrado em disco.
 	KeyStatusMissingFile
+	// KeyStatusAgentOffline: registro em metadata.json com Source ==
+	// KeySourceAgent cuja identidade não pôde ser confirmada porque o
+	// ssh-agent está inacessível (sem SSH_AUTH_SOCK, dial falhou, timeout) ou
+	// não a oferece mais.
+	KeyStatusAgentOffline
+)
+
+// KeySource indica de onde uma Key foi obtida: um par de arquivos em
+// ~/.ssh/ (padrão, comportamento histórico) ou uma identidade oferecida por
+// um ssh-agent em execução (spec ssh-agent-support, requisitos 1-4).
+type KeySource int
+
+const (
+	// KeySourceFile: chave lida de um par de arquivos em disco. É o valor
+	// zero de KeySource — registros de metadata.json anteriores a este
+	// campo existir decodificam como KeySourceFile automaticamente.
+	KeySourceFile KeySource = iota
+	// KeySourceAgent: chave cuja identidade vem de um ssh-agent, sem par de
+	// arquivos correspondente em disco necessariamente presente/legível.
+	KeySourceAgent
 )
 
 // Key é a visão consolidada de uma chave SSH, unindo o que foi encontrado em
@@ -37,13 +63,20 @@ const (
 type Key struct {
 	Metadata KeyMetadata // zero value quando Status == KeyStatusUnregistered
 
-	PublicKeyPath  string // "" se Status == KeyStatusMissingFile
-	PrivateKeyPath string // "" se Status == KeyStatusMissingFile
+	PublicKeyPath  string // "" se Status == KeyStatusMissingFile ou Source == KeySourceAgent
+	PrivateKeyPath string // "" se Status == KeyStatusMissingFile ou Source == KeySourceAgent
 	Algorithm      Algorithm
 	KeyBits        int    // bits efetivos (RSA); 256 fixo para ed25519
 	Comment        string // comentário embutido no arquivo .pub
 
 	Status KeyStatus
+
+	// Source indica se esta Key veio de um par de arquivos em disco ou de
+	// uma identidade oferecida por um ssh-agent (spec ssh-agent-support).
+	Source KeySource
+	// AgentName identifica o agente de origem (ex. "1password") quando
+	// Source == KeySourceAgent; "" para agente genérico não identificado.
+	AgentName string
 
 	// Calculados a partir de AppSettings.AlertThresholdDays no momento do
 	// ListKeys, para centralizar a regra de alerta no core (spec 5.3.4).
@@ -120,6 +153,40 @@ type KeyService interface {
 
 	// UpdateSettings persiste uma nova AppSettings.
 	UpdateSettings(AppSettings) error
+
+	// RegisterAgentKey adota uma identidade oferecida por um ssh-agent, sem
+	// registro de metadata ainda (KeyStatusUnregistered, Source ==
+	// KeySourceAgent), a partir do fingerprint já exposto por ListKeys —
+	// espelha RegisterKey, mas sem caminho de arquivo (a identidade já vem
+	// do agente, não há fingerprint a calcular). Retorna erro se já houver
+	// registro para esse fingerprint (mesma checagem de duplicata de
+	// RegisterKey).
+	RegisterAgentKey(fingerprint string, meta KeyMetadataPatch) (Key, error)
+
+	// DetectAgent verifica se há um ssh-agent acessível via SSH_AUTH_SOCK,
+	// sempre com um dial novo — nunca reaproveita conexão ou estado de
+	// ListKeys(). Detected == true assim que o dial e a listagem de
+	// identidades tiverem sucesso, mesmo que a lista venha vazia (ex.
+	// cofre do 1Password bloqueado, mas o agente está presente).
+	DetectAgent() (AgentInfo, error)
+
+	// LinkHostKey persiste um vínculo entre um host de ~/.ssh/config
+	// (identificado por hostKey, valor opaco para este pacote — a convenção
+	// de calculá-lo a partir dos Patterns do Host é responsabilidade do
+	// chamador) e uma identidade de ssh-agent (agentKeyFingerprint). Chamar
+	// de novo com o mesmo par (hostKey, agentKeyFingerprint) é idempotente:
+	// atualiza Notes do registro existente em vez de duplicar.
+	LinkHostKey(hostKey, agentKeyFingerprint, notes string) error
+
+	// UnlinkHostKey remove o vínculo identificado pelo par (hostKey,
+	// agentKeyFingerprint). Retorna ErrHostLinkNotFound se não houver
+	// registro correspondente.
+	UnlinkHostKey(hostKey, agentKeyFingerprint string) error
+
+	// ListHostLinks retorna todos os vínculos host/chave-de-agente
+	// persistidos, verbatim — sem cruzar com ConfigService.ListHosts()
+	// (detecção de vínculo órfão é responsabilidade da camada de UI).
+	ListHostLinks() ([]HostMetadata, error)
 }
 
 // FileKeyService implementa KeyService lendo/escrevendo chaves em disco e
@@ -130,10 +197,27 @@ type FileKeyService struct {
 	// MetadataPath é o arquivo de metadata.json. Se vazio, usa
 	// os.UserConfigDir()/keyward/metadata.json.
 	MetadataPath string
+	// AgentDial abre a conexão com o ssh-agent, respeitando o timeout
+	// recebido como parâmetro — a implementação não deve inventar seu
+	// próprio deadline, quem o impõe é o chamador (core). Se nil, usa
+	// defaultAgentDial (core/keys_agent.go), que dial um Unix domain socket
+	// via SSH_AUTH_SOCK.
+	AgentDial func(timeout time.Duration) (net.Conn, error)
 }
 
 func NewFileKeyService(keyDir, metadataPath string) *FileKeyService {
 	return &FileKeyService{KeyDir: keyDir, MetadataPath: metadataPath}
+}
+
+// agentDialTimeout é o timeout imposto ao dial do ssh-agent tanto em
+// ListKeys() quanto em DetectAgent() (spec ssh-agent-support, seção 4).
+const agentDialTimeout = 500 * time.Millisecond
+
+func (s *FileKeyService) agentDial() func(timeout time.Duration) (net.Conn, error) {
+	if s.AgentDial != nil {
+		return s.AgentDial
+	}
+	return defaultAgentDial
 }
 
 func (s *FileKeyService) keyDir() (string, error) {
@@ -237,7 +321,12 @@ func (s *FileKeyService) ListKeys() ([]Key, error) {
 	if err != nil {
 		return nil, err
 	}
-	return reconcileKeys(dir, mf)
+	fileKeys, err := reconcileKeys(dir, mf)
+	if err != nil {
+		return nil, err
+	}
+	agentKeys := reconcileAgentKeys(s.agentDial(), agentDialTimeout, mf)
+	return append(fileKeys, agentKeys...), nil
 }
 
 func (s *FileKeyService) GetKey(fingerprint string) (Key, error) {
@@ -369,6 +458,116 @@ func (s *FileKeyService) Settings() (AppSettings, error) {
 		return AppSettings{}, err
 	}
 	return mf.Settings, nil
+}
+
+func (s *FileKeyService) RegisterAgentKey(fingerprint string, meta KeyMetadataPatch) (Key, error) {
+	algorithm, err := agentOfferedIdentityAlgorithm(s.agentDial(), agentDialTimeout, fingerprint)
+	if err != nil {
+		return Key{}, err
+	}
+
+	st, err := s.store()
+	if err != nil {
+		return Key{}, err
+	}
+	mf, err := st.load()
+	if err != nil {
+		return Key{}, err
+	}
+	for _, k := range mf.Keys {
+		if k.Fingerprint == fingerprint {
+			return Key{}, fmt.Errorf("chave %s já está registrada", fingerprint)
+		}
+	}
+
+	record := KeyMetadata{
+		ID:          uuid.NewString(),
+		Fingerprint: fingerprint,
+		Algorithm:   algorithm,
+		CreatedAt:   time.Now().UTC(),
+		Source:      KeySourceAgent,
+	}
+	if meta.Label != nil {
+		record.Label = *meta.Label
+	}
+	if meta.Notes != nil {
+		record.Notes = *meta.Notes
+	}
+	if meta.ExpiresAt != nil {
+		record.ExpiresAt = *meta.ExpiresAt
+	}
+
+	mf.Keys = append(mf.Keys, record)
+	if err := st.save(mf); err != nil {
+		return Key{}, err
+	}
+	return s.GetKey(fingerprint)
+}
+
+func (s *FileKeyService) DetectAgent() (AgentInfo, error) {
+	return detectAgent(s.agentDial(), agentDialTimeout)
+}
+
+func (s *FileKeyService) LinkHostKey(hostKey, agentKeyFingerprint, notes string) error {
+	st, err := s.store()
+	if err != nil {
+		return err
+	}
+	mf, err := st.load()
+	if err != nil {
+		return err
+	}
+
+	for i := range mf.Hosts {
+		if mf.Hosts[i].HostKey == hostKey && mf.Hosts[i].AgentKeyFingerprint == agentKeyFingerprint {
+			mf.Hosts[i].Notes = notes
+			return st.save(mf)
+		}
+	}
+
+	mf.Hosts = append(mf.Hosts, HostMetadata{
+		HostKey:             hostKey,
+		AgentKeyFingerprint: agentKeyFingerprint,
+		Notes:               notes,
+	})
+	return st.save(mf)
+}
+
+func (s *FileKeyService) UnlinkHostKey(hostKey, agentKeyFingerprint string) error {
+	st, err := s.store()
+	if err != nil {
+		return err
+	}
+	mf, err := st.load()
+	if err != nil {
+		return err
+	}
+
+	idx := -1
+	for i := range mf.Hosts {
+		if mf.Hosts[i].HostKey == hostKey && mf.Hosts[i].AgentKeyFingerprint == agentKeyFingerprint {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return ErrHostLinkNotFound
+	}
+
+	mf.Hosts = append(mf.Hosts[:idx], mf.Hosts[idx+1:]...)
+	return st.save(mf)
+}
+
+func (s *FileKeyService) ListHostLinks() ([]HostMetadata, error) {
+	st, err := s.store()
+	if err != nil {
+		return nil, err
+	}
+	mf, err := st.load()
+	if err != nil {
+		return nil, err
+	}
+	return mf.Hosts, nil
 }
 
 func (s *FileKeyService) UpdateSettings(settings AppSettings) error {

@@ -47,4 +47,18 @@ var (
 	// StyleHelp é o rodapé de atalhos contextual.
 	StyleHelp = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "245", Dark: "241"})
+
+	// StyleAgentBadge marca a origem de uma chave de agente (AgentName ou
+	// "Agente SSH" genérico) na listagem — visualmente diferente de
+	// StyleMuted pra não ser confundida com um status de erro/aviso.
+	StyleAgentBadge = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "25", Dark: "39"})
+
+	// StyleAgentOffline marca KeyStatusAgentOffline: distinto tanto de
+	// StyleMuted (KeyStatusMissingFile, que é uma condição estável — o
+	// registro só existe até alguém o remover) quanto de StyleDanger
+	// (chave expirada) — é um estado tipicamente transitório (agente
+	// fechado/bloqueado no momento), daí o amarelo em vez de vermelho.
+	StyleAgentOffline = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "130", Dark: "214"})
 )

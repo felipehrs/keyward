@@ -16,11 +16,7 @@ func TestKeysListModel_Init_LoadsKeys(t *testing.T) {
 	}
 
 	m := newKeysListModel(keySvc)
-	results := resolveMsgs(startAsyncCmdFor(t, m.Init()))
-	loaded, ok := findKeysLoaded(results)
-	if !ok {
-		t.Fatal("esperava keysLoadedMsg")
-	}
+	loaded := initKeysListModel(t, m)
 	if loaded.err != nil {
 		t.Fatalf("keysLoadedMsg.err: %v", loaded.err)
 	}
@@ -97,7 +93,7 @@ func TestKeysListModel_Enter_PushesDetailForRegisteredKey(t *testing.T) {
 		t.Fatalf("GenerateKey: %v", err)
 	}
 	m := newKeysListModel(keySvc)
-	loaded, _ := findKeysLoaded(resolveMsgs(startAsyncCmdFor(t, m.Init())))
+	loaded := initKeysListModel(t, m)
 	m.Update(loaded)
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -124,7 +120,7 @@ func TestKeysListModel_Enter_UnregisteredKey_ShowsErrInsteadOfDetail(t *testing.
 	}
 
 	m := newKeysListModel(keySvc)
-	loaded, _ := findKeysLoaded(resolveMsgs(startAsyncCmdFor(t, m.Init())))
+	loaded := initKeysListModel(t, m)
 	m.Update(loaded)
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -147,7 +143,7 @@ func TestKeysListModel_RegisterOrphan_PushesRegisterForm(t *testing.T) {
 	}
 
 	m := newKeysListModel(keySvc)
-	loaded, _ := findKeysLoaded(resolveMsgs(startAsyncCmdFor(t, m.Init())))
+	loaded := initKeysListModel(t, m)
 	m.Update(loaded)
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
@@ -183,11 +179,22 @@ func TestKeysListModel_Settings_PushesSettingsScreen(t *testing.T) {
 	}
 }
 
-func findKeysLoaded(msgs []tea.Msg) (keysLoadedMsg, bool) {
-	for _, msg := range msgs {
-		if m, ok := msg.(keysLoadedMsg); ok {
-			return m, true
+// initKeysListModel roda m.Init() (que dispara reload() e detectAgent() num
+// só tea.Batch — ver keys_list.go) e devolve a keysLoadedMsg resultante,
+// já entregue a m.Update, do mesmo jeito que o root faria ao processar o
+// startAsyncMsg de reload(). detectAgent() não passa por startAsyncMsg (é
+// deliberadamente fora desse mecanismo — ver comentário em keys_list.go),
+// então não precisa ser resolvido aqui pros testes que só checam a lista.
+func initKeysListModel(t *testing.T, m *keysListModel) keysLoadedMsg {
+	t.Helper()
+	results := resolveMsgs(m.Init())
+	for _, msg := range results {
+		if sa, ok := msg.(startAsyncMsg); ok {
+			if loaded, ok := sa.run().(keysLoadedMsg); ok {
+				return loaded
+			}
 		}
 	}
-	return keysLoadedMsg{}, false
+	t.Fatal("esperava keysLoadedMsg a partir de m.Init()")
+	return keysLoadedMsg{}
 }

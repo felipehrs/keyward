@@ -28,6 +28,7 @@ func newMenuModel(configSvc core.ConfigService, keySvc core.KeyService, backupSv
 		items: []menuItem{
 			{label: "Hosts", build: func() screen { return newHostsListModel(configSvc) }},
 			{label: "Chaves", build: func() screen { return newKeysListModel(keySvc) }},
+			{label: "Vínculos de agente", build: func() screen { return newHostLinksModel(keySvc, configSvc) }},
 			{label: "Backup", build: func() screen { return newBackupMenuModel(configSvc, keySvc, backupSvc) }},
 			{label: "Configurações", build: func() screen { return newSettingsModel(keySvc) }},
 		},

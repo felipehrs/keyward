@@ -485,3 +485,144 @@ func (m *keyRegisterFormModel) View() string {
 	b.WriteString("\n" + StyleHelp.Render("tab/shift+tab navegar · enter registrar · esc cancelar"))
 	return b.String()
 }
+
+// --- Anotação de identidade de agente sem registro (RegisterAgentKey) ---
+
+// agentKeyRegisteredMsg é o resultado de KeyService.RegisterAgentKey.
+type agentKeyRegisteredMsg struct {
+	key core.Key
+	err error
+}
+
+// agentKeyRegisterFormModel anota (Label/Notes/ExpiresAt) uma identidade já
+// oferecida por um ssh-agent, mas ainda sem registro de metadata
+// (KeyStatusUnregistered, Source == KeySourceAgent). Espelha
+// keyRegisterFormModel, mas identifica a chave por fingerprint (já exposto
+// por ListKeys pra esse caso — ver core/keys_agent.go) em vez de um caminho
+// de arquivo, já que não há arquivo local envolvido.
+type agentKeyRegisterFormModel struct {
+	keySvc      core.KeyService
+	fingerprint string
+
+	focus     int
+	label     textinput.Model
+	notes     textarea.Model
+	expiresAt textinput.Model
+
+	validationErr error
+}
+
+func newAgentKeyRegisterFormModel(keySvc core.KeyService, fingerprint string) *agentKeyRegisterFormModel {
+	m := &agentKeyRegisterFormModel{
+		keySvc:      keySvc,
+		fingerprint: fingerprint,
+		label:       textinput.New(),
+		notes:       textarea.New(),
+		expiresAt:   textinput.New(),
+	}
+	m.notes.SetHeight(3)
+	m.expiresAt.Placeholder = dateLayout + " (opcional)"
+	m.label.Focus()
+	return m
+}
+
+func (m *agentKeyRegisterFormModel) Init() tea.Cmd { return nil }
+
+func (m *agentKeyRegisterFormModel) setFocus(field int) tea.Cmd {
+	m.label.Blur()
+	m.notes.Blur()
+	m.expiresAt.Blur()
+	m.focus = field
+	switch field {
+	case registerFieldLabel:
+		return m.label.Focus()
+	case registerFieldNotes:
+		return m.notes.Focus()
+	case registerFieldExpiresAt:
+		return m.expiresAt.Focus()
+	}
+	return nil
+}
+
+func (m *agentKeyRegisterFormModel) Update(msg tea.Msg) (screen, tea.Cmd) {
+	switch typed := msg.(type) {
+	case agentKeyRegisteredMsg:
+		if typed.err != nil {
+			return m, func() tea.Msg { return errMsg{err: typed.err} }
+		}
+		return m, func() tea.Msg { return popScreenMsg{} }
+
+	case tea.KeyMsg:
+		switch typed.String() {
+		case "esc":
+			return m, func() tea.Msg { return popScreenMsg{} }
+		case "tab", "down":
+			return m, m.setFocus((m.focus + 1) % registerFieldCount)
+		case "shift+tab", "up":
+			return m, m.setFocus((m.focus - 1 + registerFieldCount) % registerFieldCount)
+		case "enter":
+			if m.focus != registerFieldNotes {
+				return m, m.submit()
+			}
+		}
+	}
+
+	switch m.focus {
+	case registerFieldNotes:
+		var cmd tea.Cmd
+		m.notes, cmd = m.notes.Update(msg)
+		return m, cmd
+	case registerFieldExpiresAt:
+		var cmd tea.Cmd
+		m.expiresAt, cmd = m.expiresAt.Update(msg)
+		return m, cmd
+	default:
+		var cmd tea.Cmd
+		m.label, cmd = m.label.Update(msg)
+		return m, cmd
+	}
+}
+
+func (m *agentKeyRegisterFormModel) submit() tea.Cmd {
+	m.validationErr = nil
+
+	patch := core.KeyMetadataPatch{}
+	label := m.label.Value()
+	patch.Label = &label
+	notes := m.notes.Value()
+	patch.Notes = &notes
+
+	if raw := m.expiresAt.Value(); raw != "" {
+		t, err := time.Parse(dateLayout, raw)
+		if err != nil {
+			m.validationErr = fmt.Errorf("data inválida %q (esperado formato %s)", raw, dateLayout)
+			return nil
+		}
+		t = t.UTC()
+		tp := &t
+		patch.ExpiresAt = &tp
+	}
+
+	svc := m.keySvc
+	fp := m.fingerprint
+	return startAsync(func() tea.Msg {
+		k, err := svc.RegisterAgentKey(fp, patch)
+		return agentKeyRegisteredMsg{key: k, err: err}
+	})
+}
+
+func (m *agentKeyRegisterFormModel) View() string {
+	var b strings.Builder
+	b.WriteString(StyleTitle.Render("Anotar chave de agente") + "\n\n")
+	b.WriteString("Fingerprint: " + StyleMuted.Render(m.fingerprint) + "\n")
+	b.WriteString("Rótulo:      " + m.label.View() + "\n")
+	b.WriteString("Notas:\n" + m.notes.View() + "\n")
+	b.WriteString("Expira em:   " + m.expiresAt.View() + "\n")
+
+	if m.validationErr != nil {
+		b.WriteString("\n" + StyleDanger.Render("erro: "+m.validationErr.Error()) + "\n")
+	}
+
+	b.WriteString("\n" + StyleHelp.Render("tab/shift+tab navegar · enter registrar · esc cancelar"))
+	return b.String()
+}

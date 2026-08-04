@@ -4,8 +4,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/felipehrs/keyward/core"
+	"github.com/felipehrs/keyward/internal/sshagent"
 )
 
 // version é preenchido em tempo de build via `-ldflags "-X main.version=..."`
@@ -14,6 +16,9 @@ var version = "dev"
 
 func main() {
 	keySvc := core.NewFileKeyService("", "")
+	if runtime.GOOS == "windows" {
+		keySvc.AgentDial = sshagent.Dial
+	}
 	configSvc := core.NewFileConfigService("")
 	backupSvc := core.NewFileBackupService("", "", "")
 

@@ -17,6 +17,10 @@ const (
 	KeyStatusOK           KeyStatusDTO = "ok"
 	KeyStatusUnregistered KeyStatusDTO = "unregistered"
 	KeyStatusMissingFile  KeyStatusDTO = "missingFile"
+	// KeyStatusAgentOffline: registro de origem agente cuja identidade não
+	// está (mais) sendo oferecida pelo ssh-agent no momento da consulta —
+	// espelha core.KeyStatusAgentOffline (spec ssh-agent-support).
+	KeyStatusAgentOffline KeyStatusDTO = "agentOffline"
 )
 
 // keyStatusToDTO traduz por switch explícito — nunca cast numérico.
@@ -26,9 +30,29 @@ func keyStatusToDTO(s core.KeyStatus) KeyStatusDTO {
 		return KeyStatusUnregistered
 	case core.KeyStatusMissingFile:
 		return KeyStatusMissingFile
+	case core.KeyStatusAgentOffline:
+		return KeyStatusAgentOffline
 	default:
 		return KeyStatusOK
 	}
+}
+
+// KeySourceDTO traduz core.KeySource (int/iota) pra string nomeada — mesma
+// razão de KeyStatusDTO: crítico para a GUI decidir, sem ambiguidade, se
+// deve esconder ações de rotação/exclusão de arquivo (requisito de produto
+// #8 da spec ssh-agent-support).
+type KeySourceDTO string
+
+const (
+	KeySourceFile  KeySourceDTO = "file"
+	KeySourceAgent KeySourceDTO = "agent"
+)
+
+func keySourceToDTO(s core.KeySource) KeySourceDTO {
+	if s == core.KeySourceAgent {
+		return KeySourceAgent
+	}
+	return KeySourceFile
 }
 
 // KeyMetadataDTO espelha core.KeyMetadata.
@@ -79,6 +103,12 @@ type KeyDTO struct {
 	Status         KeyStatusDTO   `json:"status"`
 	IsExpired      bool           `json:"isExpired"`
 	IsExpiringSoon bool           `json:"isExpiringSoon"`
+	// Source e AgentName expõem a origem da chave (arquivo vs. ssh-agent) —
+	// sem isso o frontend não consegue esconder ações de rotação/exclusão
+	// de arquivo para chaves de agente (requisito de produto #8, achado 4
+	// da crítica do plano técnico).
+	Source    KeySourceDTO `json:"source"`
+	AgentName string       `json:"agentName,omitempty"`
 }
 
 func keyToDTO(k core.Key) KeyDTO {
@@ -92,6 +122,8 @@ func keyToDTO(k core.Key) KeyDTO {
 		Status:         keyStatusToDTO(k.Status),
 		IsExpired:      k.IsExpired,
 		IsExpiringSoon: k.IsExpiringSoon,
+		Source:         keySourceToDTO(k.Source),
+		AgentName:      k.AgentName,
 	}
 }
 

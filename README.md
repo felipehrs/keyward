@@ -262,7 +262,9 @@ Conhecidas e conscientes — a maioria está registrada com o "porquê" nas
 - [x] Lint/CI — `golangci-lint` (com `depguard` verificando a fronteira do Wails) + GitHub Actions
 - [x] `cmd/cli` — CLI via Cobra, cobrindo `key`, `host` e `backup`
 - [x] `cmd/tui` — TUI via Bubble Tea, cobrindo hosts, chaves (com destaque de expiração),
-  configurações e backup (export/import com resolução de conflito item a item)
+  configurações e backup (export/import com resolução de conflito item a item); chaves de
+  ssh-agent aparecem em seção própria, com anotação de identidade e vínculo host/chave de agente
+  (com detecção de vínculo órfão)
 - [x] `internal/adapter/gui` — GUI desktop via Wails v3, com paridade funcional com a TUI e
   formulários em modal
 - [x] Empacotamento/distribuição — um arquivo compactado por SO com as três interfaces, mais

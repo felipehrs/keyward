@@ -34,6 +34,26 @@ type KeyMetadata struct {
 	CreatedAt   time.Time  `json:"createdAt"`
 	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
 	Notes       string     `json:"notes,omitempty"`
+
+	// Source indica se este registro representa uma chave em disco
+	// (KeySourceFile, valor zero — registros gravados antes deste campo
+	// existir decodificam como KeySourceFile sem migração) ou uma
+	// identidade de ssh-agent (KeySourceAgent).
+	Source KeySource `json:"source,omitempty"`
+	// AgentName identifica o agente de origem (ex. "1password") quando
+	// Source == KeySourceAgent; "" para agente genérico.
+	AgentName string `json:"agentName,omitempty"`
+}
+
+// HostMetadata vincula um host de ~/.ssh/config a uma identidade oferecida
+// por um ssh-agent, permitindo que a UI mostre qual chave de agente é usada
+// para qual host (spec ssh-agent-support, requisitos 5-6). HostKey é opaco
+// para este pacote — a convenção (strings.Join(Patterns, "\x00")) é definida
+// e aplicada pelo chamador, nunca por core/keys.go.
+type HostMetadata struct {
+	HostKey             string `json:"hostKey"`
+	AgentKeyFingerprint string `json:"agentKeyFingerprint"`
+	Notes               string `json:"notes,omitempty"`
 }
 
 // AppSettings mapeia a entidade homônima da spec (seção 4.2).
@@ -57,9 +77,10 @@ const metadataSchemaVersion = 1
 
 // metadataFile é o documento raiz de metadata.json.
 type metadataFile struct {
-	Version  int           `json:"version"`
-	Keys     []KeyMetadata `json:"keys"`
-	Settings AppSettings   `json:"settings"`
+	Version  int            `json:"version"`
+	Keys     []KeyMetadata  `json:"keys"`
+	Settings AppSettings    `json:"settings"`
+	Hosts    []HostMetadata `json:"hosts,omitempty"`
 }
 
 // metadataStore encapsula leitura/escrita de metadata.json.
