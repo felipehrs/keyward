@@ -77,7 +77,7 @@ interfaces, mais um instalador único no Linux e no Windows:
 | `keyward_<v>_linux_amd64.tar.gz` | `keyward`, `keyward-tui`, `keyward-gui` |
 | `keyward_<v>_windows_amd64.zip` | `keyward.exe`, `keyward-tui.exe`, `keyward-gui.exe` |
 | `keyward_<v>_darwin_universal.tar.gz` | `keyward`, `keyward-tui`, `keyward-gui.app/` |
-| `keyward_<v>_amd64.deb` / `.rpm` | os três em `/usr/local/bin` + lançador da GUI |
+| `keyward.deb` / `keyward.rpm` | os três em `/usr/local/bin` + lançador da GUI |
 | `keyward-amd64-installer.exe` | os três em `Program Files`, no `PATH`, + atalho da GUI |
 | `checksums.txt` | cobre todos os acima |
 
