@@ -6,6 +6,22 @@ import type {
     ImportResultDTO,
 } from "../../bindings/github.com/felipehrs/keyward/internal/adapter/gui/models";
 import { confirmDialog } from "../confirmDialog";
+import { createFeedback } from "../feedback";
+
+// withLoading cobre as três operações lentas desta página (Export,
+// PreviewImport, Import) — sem isso, a UI durante a chamada parecia
+// travada, sem nenhum feedback de que algo estava acontecendo.
+async function withLoading<T>(btn: HTMLButtonElement, loadingText: string, fn: () => Promise<T>): Promise<T> {
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = loadingText;
+    try {
+        return await fn();
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+}
 
 export function renderBackupPage(root: HTMLElement) {
     root.innerHTML = `
@@ -70,8 +86,6 @@ function renderExportTab(root: HTMLElement) {
         </div>
     `;
 
-    const errorBox = root.querySelector("#error") as HTMLDivElement;
-    const successBox = root.querySelector("#success") as HTMLDivElement;
     const privateWarning = root.querySelector("#private-warning") as HTMLDivElement;
     const hostsList = root.querySelector("#hosts-list") as HTMLDivElement;
     const keysList = root.querySelector("#keys-list") as HTMLDivElement;
@@ -79,27 +93,12 @@ function renderExportTab(root: HTMLElement) {
     const destPath = root.querySelector("#dest-path") as HTMLInputElement;
     const chooseDestBtn = root.querySelector("#choose-dest-btn") as HTMLButtonElement;
     const exportBtn = root.querySelector("#export-btn") as HTMLButtonElement;
+    const { showError, showSuccess, clear } = createFeedback(root);
 
     let hosts: HostDTO[] = [];
     let keys: KeyDTO[] = [];
     const selectedHosts = new Set<number>();
     const selectedKeys = new Map<number, boolean>(); // index -> includePrivate
-
-    function showError(err: unknown) {
-        errorBox.textContent = err instanceof Error ? err.message : String(err);
-        errorBox.hidden = false;
-        successBox.hidden = true;
-    }
-
-    function clearError() {
-        errorBox.hidden = true;
-        errorBox.textContent = "";
-    }
-
-    function showSuccess(message: string) {
-        successBox.textContent = message;
-        successBox.hidden = false;
-    }
 
     function updatePrivateWarning() {
         const anyPrivate = [...selectedKeys.values()].some((v) => v);
@@ -172,7 +171,7 @@ function renderExportTab(root: HTMLElement) {
             [hosts, keys] = await Promise.all([App.ListHosts(), App.ListKeys()]);
             renderHostsList();
             renderKeysList();
-            clearError();
+            clear();
         } catch (err) {
             showError(err);
         }
@@ -188,7 +187,6 @@ function renderExportTab(root: HTMLElement) {
     });
 
     exportBtn.addEventListener("click", async () => {
-        successBox.hidden = true;
         if (!destPath.value) {
             showError(new Error("informe o caminho de destino do arquivo .tar.gz"));
             return;
@@ -210,13 +208,14 @@ function renderExportTab(root: HTMLElement) {
         if (!ok) return;
 
         try {
-            await App.Export({
-                destPath: destPath.value,
-                hosts: chosenHosts,
-                keys: chosenKeys,
-                includeSettings: includeSettings.checked,
-            });
-            clearError();
+            await withLoading(exportBtn, "Exportando…", () =>
+                App.Export({
+                    destPath: destPath.value,
+                    hosts: chosenHosts,
+                    keys: chosenKeys,
+                    includeSettings: includeSettings.checked,
+                }),
+            );
             showSuccess(`Pacote salvo em ${destPath.value}.`);
         } catch (err) {
             showError(err);
@@ -244,12 +243,12 @@ function renderImportTab(root: HTMLElement) {
         <div id="result-box"></div>
     `;
 
-    const errorBox = root.querySelector("#error") as HTMLDivElement;
     const srcPath = root.querySelector("#src-path") as HTMLInputElement;
     const chooseSrcBtn = root.querySelector("#choose-src-btn") as HTMLButtonElement;
     const previewBtn = root.querySelector("#preview-btn") as HTMLButtonElement;
     const previewResult = root.querySelector("#preview-result") as HTMLDivElement;
     const resultBox = root.querySelector("#result-box") as HTMLDivElement;
+    const { showError, clear } = createFeedback(root);
 
     // Resolução por item — chave estável igual à usada em
     // ImportResolutionsInput (ver dto_backup.go): host sem conflito usa
@@ -258,16 +257,6 @@ function renderImportTab(root: HTMLElement) {
     const hostResolutions = new Map<string, "skip" | "apply">();
     const keyResolutions = new Map<string, "skip" | "overwrite" | "importRenamed">();
     let currentPreview: ImportPreviewDTO | null = null;
-
-    function showError(err: unknown) {
-        errorBox.textContent = err instanceof Error ? err.message : String(err);
-        errorBox.hidden = false;
-    }
-
-    function clearError() {
-        errorBox.hidden = true;
-        errorBox.textContent = "";
-    }
 
     function summaryIsDanger(): boolean {
         if (currentPreview?.settings) return true;
@@ -408,7 +397,7 @@ function renderImportTab(root: HTMLElement) {
             applyBtn.type = "button";
             applyBtn.id = "apply-import-btn";
             applyBtn.textContent = "Aplicar import";
-            applyBtn.addEventListener("click", applyImport);
+            applyBtn.addEventListener("click", () => void applyImport(applyBtn));
             previewResult.appendChild(applyBtn);
         }
     }
@@ -437,7 +426,7 @@ function renderImportTab(root: HTMLElement) {
         }
     }
 
-    async function applyImport() {
+    async function applyImport(applyBtn: HTMLButtonElement) {
         if (!currentPreview) return;
         const danger = summaryIsDanger();
         let body = "Aplicar o import conforme as resoluções escolhidas em cada item?";
@@ -449,11 +438,13 @@ function renderImportTab(root: HTMLElement) {
         if (!ok) return;
 
         try {
-            const result = await App.Import(srcPath.value, {
-                hosts: Object.fromEntries(hostResolutions),
-                keys: Object.fromEntries(keyResolutions),
-            });
-            clearError();
+            const result = await withLoading(applyBtn, "Aplicando…", () =>
+                App.Import(srcPath.value, {
+                    hosts: Object.fromEntries(hostResolutions),
+                    keys: Object.fromEntries(keyResolutions),
+                }),
+            );
+            clear();
             renderResult(result);
         } catch (err) {
             showError(err);
@@ -476,9 +467,9 @@ function renderImportTab(root: HTMLElement) {
             return;
         }
         try {
-            const preview = await App.PreviewImport(srcPath.value);
+            const preview = await withLoading(previewBtn, "Pré-visualizando…", () => App.PreviewImport(srcPath.value));
             await renderPreview(preview);
-            clearError();
+            clear();
         } catch (err) {
             showError(err);
         }

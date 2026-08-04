@@ -425,15 +425,20 @@ vez de copiar arquivos de config inteiros. Pacote é um `.tar.gz` (`manifest.jso
   sem assinatura de código (sem certificado Authenticode/Apple Developer ID hoje — mesmo padrão
   de risco aceito e documentado já usado para outras decisões desta seção, ex. gap de ACL no
   Windows). Detalhes de comando em `docs/build.md`, seção "Empacotamento e release".
-- [ ] Layout de formulário nas telas de listagem da GUI (`HostsPage`/`KeysPage`) — hoje o
-  formulário de criação/edição fica sempre visível, embutido diretamente abaixo da tabela
-  (`internal/adapter/gui/frontend/src/pages/hostsPage.ts`/`keysPage.ts`), o que compete
-  visualmente com a listagem em vez de ser uma ação deliberada do usuário. Melhoria identificada
-  ao testar manualmente a GUI pela primeira vez (2026-08-03): mover pra uma visualização própria,
-  provavelmente um modal (mesmo padrão de overlay já usado pelo `ConfirmDialog`,
-  `internal/adapter/gui/frontend/src/confirmDialog.ts`) ou uma tela de detalhe separada — decisão
-  de qual das duas, e se vale generalizar um componente de modal reutilizável além do
-  `ConfirmDialog`, fica para quando essa melhoria for priorizada.
+- [x] ~~Layout de formulário nas telas de listagem da GUI (`HostsPage`/`KeysPage`)~~ —
+  **decidido em 2026-08-04: modal**, não tela dedicada. `internal/adapter/gui/frontend/src/modal.ts`
+  generaliza o padrão do `ConfirmDialog` sobre `<dialog>` nativo (`showModal()`), que resolve de
+  graça focus trap, Escape (evento `cancel`, sem listener manual em `document`), restauração de
+  foco no elemento que abriu o modal, e empilhamento correto quando um modal abre outro por cima
+  (ex.: confirmar overwrite de chave a partir do formulário de gerar chave). `confirmDialog.ts`
+  foi reconstruído sobre essa mesma base, mantendo a assinatura pública intacta.
+  `hostsPage.ts`/`keysPage.ts` não têm mais formulário embutido — os três formulários irmãos que
+  `keysPage.ts` alternava por `hidden` (gerar/registrar/editar) viraram três chamadas de
+  `formModal`. Corrigidos de quebra dois bugs de perda silenciosa de dados encontrados durante o
+  refactor: editar só o rótulo de uma chave apagava suas notas (o formulário de edição zerava o
+  campo em vez de carregar o valor atual), e editar um host descartava suas diretivas
+  `IdentityFile` (o formulário não tinha esse campo, mas mandava o spec inteiro pro
+  `ReplaceHost` — corrigido preservando o valor existente, sem expor o campo como editável ainda).
 
 ---
 

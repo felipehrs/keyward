@@ -1,6 +1,8 @@
 import { App } from "../../bindings/github.com/felipehrs/keyward/internal/adapter/gui";
 import type { KeyDTO } from "../../bindings/github.com/felipehrs/keyward/internal/adapter/gui/models";
 import { confirmDialog } from "../confirmDialog";
+import { createFeedback } from "../feedback";
+import { formModal, ModalCancelled } from "../modal";
 
 function formatDate(iso: string | undefined): string {
     if (!iso) return "-";
@@ -22,8 +24,12 @@ function statusLabel(k: KeyDTO): { text: string; className: string } {
 
 export function renderKeysPage(root: HTMLElement) {
     root.innerHTML = `
-        <h1>Chaves</h1>
+        <div class="page-header">
+            <h1>Chaves</h1>
+            <button type="button" id="generate-btn" class="btn-primary">+ Gerar chave</button>
+        </div>
         <div id="error" class="error" hidden></div>
+        <div id="success" class="saved" hidden></div>
         <div class="table-scroll">
             <table class="data-table">
                 <thead>
@@ -39,131 +45,150 @@ export function renderKeysPage(root: HTMLElement) {
                 <tbody id="keys-body"></tbody>
             </table>
         </div>
-
-        <form id="generate-form" class="entity-form">
-            <h2>Gerar chave</h2>
-            <label>Algoritmo
-                <select id="algorithm">
-                    <option value="">(default das configurações)</option>
-                    <option value="ed25519">ed25519</option>
-                    <option value="rsa">rsa</option>
-                </select>
-            </label>
-            <label>RSA bits (só se algoritmo=rsa) <input id="rsaBits" type="number" placeholder="4096"/></label>
-            <label>Rótulo <input id="label"/></label>
-            <label>Notas <input id="notes"/></label>
-            <label>Nome do arquivo <input id="fileName" placeholder="id_ed25519"/></label>
-            <label>Diretório <input id="directory" placeholder="~/.ssh"/></label>
-            <label>Passphrase <input id="passphrase" type="password"/></label>
-            <label>Expira em <input id="expiresAt" type="date"/></label>
-            <div class="form-buttons">
-                <button type="submit">Gerar</button>
-            </div>
-        </form>
-
-        <form id="register-form" class="entity-form" hidden>
-            <h2 id="register-title">Registrar chave órfã</h2>
-            <label>Rótulo <input id="register-label"/></label>
-            <label>Notas <input id="register-notes"/></label>
-            <label>Expira em <input id="register-expiresAt" type="date"/></label>
-            <div class="form-buttons">
-                <button type="submit">Registrar</button>
-                <button type="button" id="cancel-register-btn">Cancelar</button>
-            </div>
-        </form>
-
-        <form id="edit-form" class="entity-form" hidden>
-            <h2 id="edit-title">Editar metadata</h2>
-            <label>Rótulo <input id="edit-label"/></label>
-            <label>Notas <input id="edit-notes"/></label>
-            <label>Expiração
-                <select id="edit-expires-action">
-                    <option value="keep">Manter atual</option>
-                    <option value="clear">Remover expiração</option>
-                    <option value="set">Definir nova data</option>
-                </select>
-            </label>
-            <label id="edit-expires-value-wrap" hidden>Nova data <input id="edit-expires-value" type="date"/></label>
-            <div class="form-buttons">
-                <button type="submit">Salvar</button>
-                <button type="button" id="cancel-edit-btn">Cancelar</button>
-            </div>
-        </form>
+        <p id="empty-state" class="muted" hidden>Nenhuma chave encontrada.</p>
     `;
 
     const tableBody = root.querySelector("#keys-body") as HTMLTableSectionElement;
-    const errorBox = root.querySelector("#error") as HTMLDivElement;
+    const emptyState = root.querySelector("#empty-state") as HTMLParagraphElement;
+    const generateBtn = root.querySelector("#generate-btn") as HTMLButtonElement;
+    const { showError, showSuccess, clear } = createFeedback(root);
 
-    const generateForm = root.querySelector("#generate-form") as HTMLFormElement;
-    const algorithmInput = root.querySelector("#algorithm") as HTMLSelectElement;
-    const rsaBitsInput = root.querySelector("#rsaBits") as HTMLInputElement;
-    const labelInput = root.querySelector("#label") as HTMLInputElement;
-    const notesInput = root.querySelector("#notes") as HTMLInputElement;
-    const fileNameInput = root.querySelector("#fileName") as HTMLInputElement;
-    const directoryInput = root.querySelector("#directory") as HTMLInputElement;
-    const passphraseInput = root.querySelector("#passphrase") as HTMLInputElement;
-    const expiresAtInput = root.querySelector("#expiresAt") as HTMLInputElement;
-
-    const registerForm = root.querySelector("#register-form") as HTMLFormElement;
-    const registerTitle = root.querySelector("#register-title") as HTMLHeadingElement;
-    const registerLabelInput = root.querySelector("#register-label") as HTMLInputElement;
-    const registerNotesInput = root.querySelector("#register-notes") as HTMLInputElement;
-    const registerExpiresAtInput = root.querySelector("#register-expiresAt") as HTMLInputElement;
-    const cancelRegisterBtn = root.querySelector("#cancel-register-btn") as HTMLButtonElement;
-    let registerTarget: KeyDTO | null = null;
-
-    const editForm = root.querySelector("#edit-form") as HTMLFormElement;
-    const editTitle = root.querySelector("#edit-title") as HTMLHeadingElement;
-    const editLabelInput = root.querySelector("#edit-label") as HTMLInputElement;
-    const editNotesInput = root.querySelector("#edit-notes") as HTMLInputElement;
-    const editExpiresAction = root.querySelector("#edit-expires-action") as HTMLSelectElement;
-    const editExpiresValueWrap = root.querySelector("#edit-expires-value-wrap") as HTMLLabelElement;
-    const editExpiresValue = root.querySelector("#edit-expires-value") as HTMLInputElement;
-    const cancelEditBtn = root.querySelector("#cancel-edit-btn") as HTMLButtonElement;
-    let editTarget: KeyDTO | null = null;
-
-    function showError(err: unknown) {
-        errorBox.textContent = err instanceof Error ? err.message : String(err);
-        errorBox.hidden = false;
+    // submitGenerate é recursivo: se o core recusar por já existir um
+    // arquivo com esse nome, abre um confirm por cima do próprio modal de
+    // geração e, se aceito, tenta de novo com overwrite=true. Recusar o
+    // confirm lança ModalCancelled — formModal entende isso como "continue
+    // aberto, sem mostrar erro", não como sucesso nem como falha real.
+    async function submitGenerate(values: Record<string, string>, overwrite: boolean): Promise<void> {
+        const input = {
+            algorithm: values.algorithm,
+            rsaBits: values.rsaBits ? Number(values.rsaBits) : undefined,
+            passphrase: values.passphrase,
+            comment: "",
+            fileName: values.fileName,
+            overwrite,
+            directory: values.directory,
+            label: values.label,
+            notes: values.notes,
+            expiresAt: values.expiresAt || undefined,
+        };
+        try {
+            await App.GenerateKey(input);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (!overwrite && message.includes("já existe (use Overwrite")) {
+                const confirmed = await confirmDialog({
+                    title: "Sobrescrever chave existente?",
+                    body: message,
+                    danger: true,
+                });
+                if (confirmed) {
+                    await submitGenerate(values, true);
+                    return;
+                }
+                throw new ModalCancelled();
+            }
+            throw err;
+        }
     }
 
-    function clearError() {
-        errorBox.hidden = true;
-        errorBox.textContent = "";
+    async function openGenerateModal() {
+        const ok = await formModal({
+            title: "Gerar chave",
+            submitLabel: "Gerar",
+            wide: true,
+            fields: [
+                {
+                    name: "algorithm",
+                    label: "Algoritmo",
+                    type: "select",
+                    value: "",
+                    options: [
+                        { value: "", label: "(default das configurações)" },
+                        { value: "ed25519", label: "ed25519" },
+                        { value: "rsa", label: "rsa" },
+                    ],
+                },
+                { name: "rsaBits", label: "RSA bits (só se algoritmo=rsa)", type: "number", placeholder: "4096" },
+                { name: "label", label: "Rótulo" },
+                { name: "notes", label: "Notas" },
+                { name: "fileName", label: "Nome do arquivo", placeholder: "id_ed25519" },
+                { name: "directory", label: "Diretório", placeholder: "~/.ssh" },
+                { name: "passphrase", label: "Passphrase", type: "password" },
+                { name: "expiresAt", label: "Expira em", type: "date" },
+            ],
+            onSubmit: (values) => submitGenerate(values, false),
+        });
+        if (ok) {
+            showSuccess("Chave gerada.");
+            await reload();
+        }
     }
 
-    function startRegister(key: KeyDTO) {
-        registerTarget = key;
-        registerTitle.textContent = "Registrar " + (key.privateKeyPath || key.publicKeyPath);
-        registerForm.hidden = false;
-        generateForm.hidden = true;
+    async function openRegisterModal(key: KeyDTO) {
+        const ok = await formModal({
+            title: "Registrar " + (key.privateKeyPath || key.publicKeyPath),
+            submitLabel: "Registrar",
+            fields: [
+                { name: "label", label: "Rótulo" },
+                { name: "notes", label: "Notas" },
+                { name: "expiresAt", label: "Expira em", type: "date" },
+            ],
+            onSubmit: async (values) => {
+                await App.RegisterKey({
+                    privateKeyPath: key.privateKeyPath,
+                    label: values.label,
+                    notes: values.notes,
+                    expiresAt: values.expiresAt || undefined,
+                });
+            },
+        });
+        if (ok) {
+            showSuccess("Chave registrada.");
+            await reload();
+        }
     }
 
-    function stopRegister() {
-        registerTarget = null;
-        registerForm.reset();
-        registerForm.hidden = true;
-        generateForm.hidden = false;
-    }
-
-    function startEdit(key: KeyDTO) {
-        editTarget = key;
-        editTitle.textContent = "Editar " + (key.metadata.label || key.metadata.fingerprint);
-        editLabelInput.value = key.metadata.label ?? "";
-        editNotesInput.value = "";
-        editExpiresAction.value = "keep";
-        editExpiresValueWrap.hidden = true;
-        editExpiresValue.value = "";
-        editForm.hidden = false;
-        generateForm.hidden = true;
-    }
-
-    function stopEdit() {
-        editTarget = null;
-        editForm.reset();
-        editExpiresValueWrap.hidden = true;
-        editForm.hidden = true;
-        generateForm.hidden = false;
+    async function openEditModal(key: KeyDTO) {
+        const ok = await formModal({
+            title: "Editar " + (key.metadata.label || key.metadata.fingerprint),
+            submitLabel: "Salvar",
+            fields: [
+                { name: "label", label: "Rótulo", value: key.metadata.label ?? "" },
+                // Bug corrigido: o formulário original zerava esse campo em
+                // vez de carregar o valor atual — editar só o rótulo apagava
+                // as notas da chave, porque o submit sempre manda "notes".
+                { name: "notes", label: "Notas", value: key.metadata.notes ?? "" },
+                {
+                    name: "expiresAction",
+                    label: "Expiração",
+                    type: "select",
+                    value: "keep",
+                    options: [
+                        { value: "keep", label: "Manter atual" },
+                        { value: "clear", label: "Remover expiração" },
+                        { value: "set", label: "Definir nova data" },
+                    ],
+                },
+                {
+                    name: "expiresValue",
+                    label: "Nova data",
+                    type: "date",
+                    visibleWhen: (values) => values.expiresAction === "set",
+                },
+            ],
+            onSubmit: async (values) => {
+                await App.UpdateKeyMetadata(key.metadata.fingerprint, {
+                    label: values.label,
+                    notes: values.notes,
+                    expiresAt: values.expiresAction as "keep" | "clear" | "set",
+                    expiresAtValue: values.expiresValue || undefined,
+                });
+            },
+        });
+        if (ok) {
+            showSuccess("Metadata atualizada.");
+            await reload();
+        }
     }
 
     async function unregisterKey(key: KeyDTO) {
@@ -174,6 +199,7 @@ export function renderKeysPage(root: HTMLElement) {
         if (!ok) return;
         try {
             await App.UnregisterKey(key.metadata.fingerprint);
+            showSuccess("Registro de metadata removido.");
             await reload();
         } catch (err) {
             showError(err);
@@ -182,6 +208,7 @@ export function renderKeysPage(root: HTMLElement) {
 
     function renderKeys(keys: KeyDTO[]) {
         tableBody.innerHTML = "";
+        emptyState.hidden = keys.length > 0;
         for (const k of keys) {
             const row = document.createElement("tr");
 
@@ -210,18 +237,18 @@ export function renderKeysPage(root: HTMLElement) {
                 const registerBtn = document.createElement("button");
                 registerBtn.type = "button";
                 registerBtn.textContent = "Registrar";
-                registerBtn.addEventListener("click", () => startRegister(k));
+                registerBtn.addEventListener("click", () => void openRegisterModal(k));
                 actions.appendChild(registerBtn);
             } else if (k.status === "ok") {
                 const editBtn = document.createElement("button");
                 editBtn.type = "button";
                 editBtn.textContent = "Editar";
-                editBtn.addEventListener("click", () => startEdit(k));
+                editBtn.addEventListener("click", () => void openEditModal(k));
 
                 const unregisterBtn = document.createElement("button");
                 unregisterBtn.type = "button";
                 unregisterBtn.textContent = "Remover registro";
-                unregisterBtn.addEventListener("click", () => unregisterKey(k));
+                unregisterBtn.addEventListener("click", () => void unregisterKey(k));
 
                 actions.append(editBtn, unregisterBtn);
             }
@@ -235,95 +262,13 @@ export function renderKeysPage(root: HTMLElement) {
         try {
             const keys = await App.ListKeys();
             renderKeys(keys);
-            clearError();
+            clear();
         } catch (err) {
             showError(err);
         }
     }
 
-    cancelRegisterBtn.addEventListener("click", () => stopRegister());
-
-    registerForm.addEventListener("submit", async (ev) => {
-        ev.preventDefault();
-        if (!registerTarget) return;
-        try {
-            await App.RegisterKey({
-                privateKeyPath: registerTarget.privateKeyPath,
-                label: registerLabelInput.value,
-                notes: registerNotesInput.value,
-                expiresAt: registerExpiresAtInput.value || undefined,
-            });
-            stopRegister();
-            await reload();
-        } catch (err) {
-            showError(err);
-        }
-    });
-
-    async function submitGenerate(overwrite: boolean) {
-        const input = {
-            algorithm: algorithmInput.value,
-            rsaBits: rsaBitsInput.value ? Number(rsaBitsInput.value) : undefined,
-            passphrase: passphraseInput.value,
-            comment: "",
-            fileName: fileNameInput.value,
-            overwrite,
-            directory: directoryInput.value,
-            label: labelInput.value,
-            notes: notesInput.value,
-            expiresAt: expiresAtInput.value || undefined,
-        };
-
-        try {
-            await App.GenerateKey(input);
-            generateForm.reset();
-            clearError();
-            await reload();
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            if (!overwrite && message.includes("já existe (use Overwrite")) {
-                const ok = await confirmDialog({
-                    title: "Sobrescrever chave existente?",
-                    body: message,
-                    danger: true,
-                });
-                if (ok) {
-                    await submitGenerate(true);
-                    return;
-                }
-                return;
-            }
-            showError(err);
-        }
-    }
-
-    generateForm.addEventListener("submit", (ev) => {
-        ev.preventDefault();
-        void submitGenerate(false);
-    });
-
-    editExpiresAction.addEventListener("change", () => {
-        editExpiresValueWrap.hidden = editExpiresAction.value !== "set";
-    });
-
-    cancelEditBtn.addEventListener("click", () => stopEdit());
-
-    editForm.addEventListener("submit", async (ev) => {
-        ev.preventDefault();
-        if (!editTarget) return;
-        try {
-            await App.UpdateKeyMetadata(editTarget.metadata.fingerprint, {
-                label: editLabelInput.value,
-                notes: editNotesInput.value,
-                expiresAt: editExpiresAction.value as "keep" | "clear" | "set",
-                expiresAtValue: editExpiresValue.value || undefined,
-            });
-            stopEdit();
-            await reload();
-        } catch (err) {
-            showError(err);
-        }
-    });
+    generateBtn.addEventListener("click", () => void openGenerateModal());
 
     reload();
 }

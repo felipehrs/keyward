@@ -1,8 +1,14 @@
-// ConfirmDialog é o componente único e reutilizável pra toda ação
-// destrutiva da GUI (espelha cmd/tui/confirm.go): foco default em
-// "Cancelar" (seguro), estilo de alto contraste quando danger=true. app.go
-// nunca decide isso sozinho — é papel do frontend nunca chamar um binding
-// destrutivo sem passar por aqui antes.
+// ConfirmDialog é o componente reutilizável pra toda ação destrutiva da GUI
+// (espelha cmd/tui/confirm.go): foco default em "Cancelar" (seguro), estilo
+// de alto contraste quando danger=true. app.go nunca decide isso sozinho —
+// é papel do frontend nunca chamar um binding destrutivo sem passar por
+// aqui antes.
+//
+// Construído sobre a base de <dialog> nativo de modal.ts — ver esse arquivo
+// para o porquê (focus trap, Escape, restauração de foco e empilhamento
+// corretos de graça, sem reimplementar nada disso aqui).
+import { createDialog, mountDialog } from "./modal";
+
 export interface ConfirmOptions {
     title: string;
     body: string;
@@ -11,53 +17,52 @@ export interface ConfirmOptions {
 
 export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
     return new Promise((resolve) => {
-        const overlay = document.createElement("div");
-        overlay.className = "confirm-overlay";
-
-        const box = document.createElement("div");
-        box.className = opts.danger ? "confirm-box confirm-danger" : "confirm-box";
+        const dialog = createDialog({ danger: opts.danger });
 
         const title = document.createElement("h3");
         title.textContent = opts.title;
 
         const body = document.createElement("p");
-        body.textContent = opts.body;
+        body.textContent = opts.body; // white-space: pre-wrap no CSS preserva \n
 
         const actions = document.createElement("div");
-        actions.className = "confirm-actions";
+        actions.className = "dialog-actions";
 
         const cancelBtn = document.createElement("button");
         cancelBtn.type = "button";
-        cancelBtn.className = "confirm-cancel";
+        cancelBtn.className = "btn-secondary";
         cancelBtn.textContent = "Cancelar";
 
         const confirmBtn = document.createElement("button");
         confirmBtn.type = "button";
-        confirmBtn.className = "confirm-confirm";
+        confirmBtn.className = "btn-primary";
         confirmBtn.textContent = "Confirmar";
 
-        function onKeyDown(ev: KeyboardEvent) {
-            if (ev.key === "Escape") close(false);
-        }
+        actions.append(cancelBtn, confirmBtn);
+        dialog.append(title, body, actions);
 
-        function close(result: boolean) {
-            overlay.remove();
-            document.removeEventListener("keydown", onKeyDown);
+        let resolved = false;
+        function finish(result: boolean) {
+            if (resolved) return;
+            resolved = true;
             resolve(result);
         }
 
-        cancelBtn.addEventListener("click", () => close(false));
-        confirmBtn.addEventListener("click", () => close(true));
-        overlay.addEventListener("click", (ev) => {
-            if (ev.target === overlay) close(false);
+        cancelBtn.addEventListener("click", () => {
+            finish(false);
+            dialog.close();
         });
-        document.addEventListener("keydown", onKeyDown);
+        confirmBtn.addEventListener("click", () => {
+            finish(true);
+            dialog.close();
+        });
+        // Escape (evento "cancel" nativo) e qualquer outro caminho de
+        // fechamento (clique fora, etc.) caem aqui — finish() é idempotente,
+        // então um close() já resolvido por clique em botão não é sobrescrito.
+        dialog.addEventListener("cancel", () => finish(false));
+        dialog.addEventListener("close", () => finish(false));
 
-        actions.append(cancelBtn, confirmBtn);
-        box.append(title, body, actions);
-        overlay.append(box);
-        document.body.append(overlay);
-
+        mountDialog(dialog);
         cancelBtn.focus();
     });
 }

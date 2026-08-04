@@ -1,10 +1,11 @@
 import { App } from "../../bindings/github.com/felipehrs/keyward/internal/adapter/gui";
+import { createFeedback } from "../feedback";
 
 export function renderSettingsPage(root: HTMLElement) {
     root.innerHTML = `
         <h1>Configurações</h1>
         <div id="error" class="error" hidden></div>
-        <div id="saved" class="saved" hidden>Configurações salvas.</div>
+        <div id="saved" class="saved" hidden></div>
         <form id="settings-form" class="entity-form">
             <label>Alertar expiração com quantos dias de antecedência
                 <input id="alertThresholdDays" type="number" min="0" required/>
@@ -16,34 +17,23 @@ export function renderSettingsPage(root: HTMLElement) {
                 </select>
             </label>
             <div class="form-buttons">
-                <button type="submit">Salvar</button>
+                <button type="submit" id="submit-btn">Salvar</button>
             </div>
         </form>
     `;
 
-    const errorBox = root.querySelector("#error") as HTMLDivElement;
-    const savedBox = root.querySelector("#saved") as HTMLDivElement;
     const form = root.querySelector("#settings-form") as HTMLFormElement;
     const thresholdInput = root.querySelector("#alertThresholdDays") as HTMLInputElement;
     const algorithmInput = root.querySelector("#defaultAlgorithm") as HTMLSelectElement;
-
-    function showError(err: unknown) {
-        errorBox.textContent = err instanceof Error ? err.message : String(err);
-        errorBox.hidden = false;
-        savedBox.hidden = true;
-    }
-
-    function clearError() {
-        errorBox.hidden = true;
-        errorBox.textContent = "";
-    }
+    const submitBtn = root.querySelector("#submit-btn") as HTMLButtonElement;
+    const { showError, showSuccess, clear } = createFeedback(root, { successSelector: "#saved" });
 
     async function load() {
         try {
             const settings = await App.GetSettings();
             thresholdInput.value = String(settings.alertThresholdDays);
             algorithmInput.value = settings.defaultAlgorithm;
-            clearError();
+            clear();
         } catch (err) {
             showError(err);
         }
@@ -51,16 +41,17 @@ export function renderSettingsPage(root: HTMLElement) {
 
     form.addEventListener("submit", async (ev) => {
         ev.preventDefault();
-        savedBox.hidden = true;
+        submitBtn.disabled = true;
         try {
             await App.UpdateSettings({
                 alertThresholdDays: Number(thresholdInput.value),
                 defaultAlgorithm: algorithmInput.value,
             });
-            clearError();
-            savedBox.hidden = false;
+            showSuccess("Configurações salvas.");
         } catch (err) {
             showError(err);
+        } finally {
+            submitBtn.disabled = false;
         }
     });
 

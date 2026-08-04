@@ -69,6 +69,17 @@ body {
     min-width: 0;
 }
 
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.page-header h1 {
+    margin: 0;
+}
+
 .error {
     background: #4a1414;
     color: #ffb4b4;
@@ -158,7 +169,8 @@ table.data-table {
     color: #9aa6c0;
 }
 
-.entity-form input {
+.entity-form input,
+.entity-form select {
     background: #1b1b20;
     border: 1px solid #2a2a30;
     border-radius: 6px;
@@ -181,11 +193,6 @@ table.data-table {
     cursor: pointer;
 }
 
-.entity-form #cancel-edit-btn {
-    background: #2a2a30;
-    color: #f4f6fb;
-}
-
 .data-table td button {
     background: #1b1b20;
     border: 1px solid #2a2a30;
@@ -197,62 +204,78 @@ table.data-table {
     font-size: 0.8rem;
 }
 
-/* ConfirmDialog — modal reutilizável pra toda ação destrutiva. */
-.confirm-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-}
-
-.confirm-box {
+/* Base de <dialog> nativo — usada por confirmDialog.ts e por formModal()
+   (modal.ts). showModal() já centraliza, cria focus trap e restaura o foco
+   no elemento que abriu o modal ao fechar — nada disso é feito à mão aqui. */
+dialog.app-dialog {
     background: #1b1b20;
+    color: #f4f6fb;
     border: 1px solid #2a2a30;
     border-radius: 10px;
     padding: 1.5rem;
     max-width: 420px;
     width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
 }
 
-.confirm-box.confirm-danger {
+dialog.app-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+dialog.app-dialog.app-dialog-danger {
     border-color: #ff2d72;
     box-shadow: 0 0 0 1px #ff2d72;
 }
 
-.confirm-box h3 {
+/* Formulários maiores (ex.: gerar chave, 8 campos) não cabem em 420px. */
+dialog.app-dialog.app-dialog-wide {
+    max-width: 560px;
+}
+
+dialog.app-dialog h3 {
     margin: 0 0 0.75rem;
 }
 
-.confirm-box p {
+dialog.app-dialog p {
     color: #9aa6c0;
     margin: 0 0 1.25rem;
     white-space: pre-wrap;
 }
 
-.confirm-actions {
+dialog.app-dialog .modal-form {
+    max-width: none; /* já limitado pela largura do próprio dialog */
+}
+
+.dialog-actions {
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
+    margin-top: 0.5rem;
 }
 
-.confirm-actions button {
+.btn-primary,
+.btn-secondary {
     border: none;
     border-radius: 6px;
     padding: 0.5rem 1rem;
     cursor: pointer;
 }
 
-.confirm-cancel {
-    background: #2a2a30;
-    color: #f4f6fb;
+.btn-primary:disabled,
+.btn-secondary:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 
-.confirm-confirm {
+.btn-primary {
     background: #ff2d72;
     color: white;
+}
+
+.btn-secondary {
+    background: #2a2a30;
+    color: #f4f6fb;
 }
 
 /* Backup — export/import */
@@ -348,16 +371,6 @@ table.data-table {
     padding: 0.4rem 0.7rem;
     cursor: pointer;
     white-space: nowrap;
-}
-
-.preview-list {
-    margin: 0 0 1rem;
-    padding-left: 1.25rem;
-    font-size: 0.9rem;
-}
-
-.preview-list li {
-    padding: 0.1rem 0;
 }
 
 .conflict-row {
