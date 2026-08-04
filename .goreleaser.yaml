@@ -2,62 +2,25 @@ version: 2
 
 project_name: keyward
 
-before:
-  hooks:
-    - go mod tidy
-
+# O GoReleaser NÃO builda nem arquiva nada neste projeto — ele cuida só do
+# changelog agrupado, do checksums.txt e da criação do GitHub Release.
+#
+# Motivo: os artefatos precisam de cgo + webview nativo (GUI via Wails) e,
+# no macOS, de um bundle `keyward-gui.app` — que é um DIRETÓRIO. O
+# GoReleaser não percorre diretórios recursivamente nos globs de
+# `archives.files` (ele chama fileglob.Glob e processa cada match direto,
+# sem walk), então o bundle não entraria num archive montado por ele. Além
+# disso, os instaladores precisam dos três binários no mesmo job que os
+# empacota. Por isso cada runner nativo monta o próprio archive e o próprio
+# instalador (ver .github/workflows/release.yml) e deposita tudo em
+# dist-release/, que entra aqui via extra_files.
 builds:
-  - id: cli
-    main: ./cmd/cli
-    binary: keyward
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w -X main.version={{ .Version }}
-
-  - id: tui
-    main: ./cmd/tui
-    binary: keyward-tui
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w -X main.version={{ .Version }}
-
-archives:
-  - id: cli
-    ids: [cli]
-    name_template: >-
-      keyward_{{ .Version }}_{{ .Os }}_{{ .Arch }}
-    formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
-
-  - id: tui
-    ids: [tui]
-    name_template: >-
-      keyward-tui_{{ .Version }}_{{ .Os }}_{{ .Arch }}
-    formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
+  - skip: true
 
 checksum:
   name_template: "checksums.txt"
+  extra_files:
+    - glob: dist-release/*
 
 changelog:
   sort: asc
@@ -77,14 +40,9 @@ changelog:
     - title: "Outras mudanças"
       order: 999
 
-# Instaladores da GUI (Wails) são gerados fora do GoReleaser, pelo tooling
-# nativo do próprio Wails (internal/adapter/gui/Taskfile.yml) numa matriz de
-# runners nativos por SO — GoReleaser não faz cgo cross-platform. O workflow
-# de release baixa esses artefatos para dist-gui/ antes de rodar `goreleaser
-# release`, e eles entram no MESMO GitHub Release via extra_files.
 release:
   # "auto": detecta sufixo semver de pré-lançamento na tag (-alpha/-beta/-rc)
   # e marca o GitHub Release correspondente como "Pre-release" automaticamente.
   prerelease: auto
   extra_files:
-    - glob: dist-gui/*
+    - glob: dist-release/*

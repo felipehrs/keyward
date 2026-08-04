@@ -3,11 +3,11 @@ Version=1.0
 Name=keyward
 Comment=Gerenciador de configuração SSH
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/keyward %u
+Exec=/usr/local/bin/keyward-gui %u
 Terminal=false
 Type=Application
 Icon=keyward
 Categories=Utility;
-StartupWMClass=keyward
+StartupWMClass=keyward-gui
 
  

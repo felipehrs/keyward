@@ -69,37 +69,62 @@ outro SO, quando necessário.
 
 ## Empacotamento e release
 
-Duas ferramentas, cada uma cuidando do que ela faz bem — ver `docs/specs/ssh-config-manager.md`
-seção 7 para o raciocínio completo por trás dessa divisão:
+Cada release publica **um arquivo compactado por sistema operacional**, contendo as três
+interfaces, mais um instalador único no Linux e no Windows:
 
-- **`cmd/cli`/`cmd/tui`** (Go puro, sem cgo): [GoReleaser](https://goreleaser.com/), configurado
-  em [`.goreleaser.yaml`](../.goreleaser.yaml). Cross-compile nativo do Go
-  (`{linux,darwin,windows} × {amd64,arm64}`), gera `.tar.gz`/`.zip` por plataforma,
-  `checksums.txt` e changelog agrupado por prefixo de commit (`feat`/`fix`).
-- **GUI (Wails)**: cgo + webview nativo não são o forte do GoReleaser — continua usando o
-  tooling do próprio Wails (`wails3 task package`/`package:dmg`, ver seção "GUI" acima), rodando
-  numa matriz de runners nativos por SO no CI.
+| Asset | Conteúdo |
+|---|---|
+| `keyward_<v>_linux_amd64.tar.gz` | `keyward`, `keyward-tui`, `keyward-gui` |
+| `keyward_<v>_windows_amd64.zip` | `keyward.exe`, `keyward-tui.exe`, `keyward-gui.exe` |
+| `keyward_<v>_darwin_universal.tar.gz` | `keyward`, `keyward-tui`, `keyward-gui.app/` |
+| `keyward_<v>_amd64.deb` / `.rpm` | os três em `/usr/local/bin` + lançador da GUI |
+| `keyward-amd64-installer.exe` | os três em `Program Files`, no `PATH`, + atalho da GUI |
+| `checksums.txt` | cobre todos os acima |
 
-Os dois pipelines são orquestrados por um único workflow,
-[`.github/workflows/release.yml`](../.github/workflows/release.yml), disparado por push de tag
-`vX.Y.Z`: primeiro empacota a GUI nos três SOs, depois roda o GoReleaser (que recebe os
-instaladores da GUI via `release.extra_files` e publica tudo — CLI, TUI e GUI — num único GitHub
-Release).
+O macOS sai como **universal binary** (amd64 + arm64 via `lipo`): um arquivo só, rodando nativo
+tanto em Intel quanto em Apple Silicon. Linux e Windows são amd64.
+
+### Como o pipeline é montado
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) dispara em push de tag
+`vX.Y.Z` e tem dois jobs:
+
+1. **`build`** — matriz de três runners nativos. Cada um é autossuficiente: builda a GUI com
+   `wails3 task build` (cgo + webview nativo), builda CLI e TUI com `go build`, monta o arquivo
+   compactado do seu SO e o instalador correspondente.
+2. **`release`** — baixa os artefatos dos três e roda o GoReleaser.
+
+O **GoReleaser não builda nem arquiva nada** aqui (`builds: - skip: true` em
+[`.goreleaser.yaml`](../.goreleaser.yaml)) — ele cuida só do changelog agrupado por prefixo de
+commit, do `checksums.txt` e da criação do Release. Dois motivos concretos para essa divisão:
+
+- o bundle `keyward-gui.app` do macOS é um **diretório**, e o GoReleaser não percorre diretórios
+  recursivamente nos globs de `archives.files`;
+- os instaladores precisam dos três binários no mesmo job que os empacota, o que não encaixa com
+  o GoReleaser buildando CLI/TUI num job separado depois.
+
+Como cada runner nativo já precisa dos três binários para o instalador, montar o arquivo
+compactado ali é uma linha de `tar`/`Compress-Archive`.
+
+> As tasks `create:deb`/`create:rpm`/`create:nsis:installer` do Wails **não** são usadas: todas
+> têm `deps: build`, que rebuildaria a GUI por cima de `bin/keyward` — onde, no nosso layout,
+> mora a CLI. O workflow chama `generate:deb`/`generate:rpm` e o `makensis` diretamente.
 
 Testar localmente sem publicar nada (não precisa de tag real):
 
 ```bash
-goreleaser check                          # valida o .goreleaser.yaml
-goreleaser release --snapshot --clean     # build completo em dist/, sem publicar
+goreleaser check
 ```
 
-Cortar um release de verdade:
+Cortar um release:
 
 ```bash
 git tag vX.Y.Z
 git push --tags   # dispara o workflow de release
 ```
 
-**Fora de escopo por decisão consciente (ver spec seção 7)**: Homebrew tap/Scoop/AUR próprio
-(só GitHub Releases por ora) e assinatura de código (Authenticode/notarization) — sem
-certificado disponível hoje, os binários/instaladores vão gerar aviso do SmartScreen/Gatekeeper.
+**Fora de escopo por decisão consciente (ver spec seção 7)**: AppImage, `.dmg` e `.pkg` (o macOS
+distribui pelo `.tar.gz`); ARM no Linux/Windows; Homebrew tap/Scoop/AUR próprio; e assinatura de
+código (Authenticode/notarization) — sem certificado disponível hoje, os binários e instaladores
+vão gerar aviso do SmartScreen/Gatekeeper, e no macOS o `.app` não assinado exige liberar em
+Ajustes › Privacidade e Segurança na primeira execução.

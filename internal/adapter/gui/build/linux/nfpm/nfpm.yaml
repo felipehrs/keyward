@@ -16,9 +16,18 @@ homepage: "https://github.com/felipehrs/keyward"
 # Licença do projeto ainda não definida (ver README.md) — não afirmar MIT.
 release: "1"
 
+# O pacote instala as TRÊS interfaces, não só a GUI: quem instala o keyward
+# pelo .deb/.rpm recebe CLI, TUI e GUI de uma vez. Os binários são montados
+# em bin/ pelo job de build do workflow de release (ver
+# .github/workflows/release.yml) — a GUI sai do `wails3 task build` já
+# renomeada pra keyward-gui, pra não colidir com a CLI.
 contents:
   - src: "./bin/keyward"
     dst: "/usr/local/bin/keyward"
+  - src: "./bin/keyward-tui"
+    dst: "/usr/local/bin/keyward-tui"
+  - src: "./bin/keyward-gui"
+    dst: "/usr/local/bin/keyward-gui"
   - src: "./build/appicon.png"
     dst: "/usr/share/icons/hicolor/128x128/apps/keyward.png"
   - src: "./build/linux/keyward.desktop"

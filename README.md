@@ -25,14 +25,15 @@ interfaces: CLI, TUI e GUI desktop.
   diálogos nativos de arquivo, cliques) só foi verificada por build/execução sem erro, não por
   teste de UI interativo — não há test runner de frontend configurado (decisão consciente, para
   não empilhar mais risco de toolchain sobre o do próprio Wails v3, ainda em beta)
-- [x] Empacotamento/distribuição por plataforma — `cmd/cli`/`cmd/tui` via
-  [GoReleaser](https://goreleaser.com/) (`.goreleaser.yaml`, cross-compile Go puro sem cgo,
-  `.tar.gz`/`.zip` + checksums + changelog); GUI via tooling nativo do próprio Wails (`wails3
-  task package`), gerando instalador NSIS no Windows, AppImage/`.deb`/`.rpm`/AUR no Linux e
-  `.dmg` no macOS. Um único GitHub Release por tag `vX.Y.Z`, orquestrado por
-  [`.github/workflows/release.yml`](.github/workflows/release.yml) — só GitHub Releases por
-  enquanto (sem Homebrew/Scoop/AUR próprio) e sem assinatura de código (SmartScreen/Gatekeeper
-  vão avisar até haver certificado), decisões conscientes registradas na spec seção 7.
+- [x] Empacotamento/distribuição por plataforma — **um arquivo compactado por SO**, contendo as
+  três interfaces (`keyward`, `keyward-tui`, `keyward-gui`): `.tar.gz` no Linux, `.zip` no
+  Windows e `.tar.gz` universal (amd64+arm64) no macOS, esse último com a GUI como bundle
+  `keyward-gui.app`. Mais um instalador único no Linux (`.deb`/`.rpm`) e no Windows (NSIS) que
+  instala os três de uma vez, com CLI e TUI no `PATH`. Um GitHub Release por tag `vX.Y.Z`, via
+  [`.github/workflows/release.yml`](.github/workflows/release.yml): runners nativos montam os
+  artefatos e o [GoReleaser](https://goreleaser.com/) cuida de changelog, checksums e publicação.
+  Sem Homebrew/Scoop/AUR próprio e sem assinatura de código (SmartScreen/Gatekeeper vão avisar
+  até haver certificado) — decisões conscientes registradas na spec seção 7.
 
 ## Funcionalidades
 

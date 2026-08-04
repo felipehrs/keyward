@@ -31,6 +31,16 @@ Unicode true
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ## !define WAILS_INSTALL_SCOPE     "user"             # Default "machine" - set to "user" for per-user install ($LOCALAPPDATA) without UAC prompt
 ####
+## O instalador entrega as TRÊS interfaces do keyward, não só a GUI.
+## Por isso o executável da GUI precisa se chamar "keyward-gui.exe": o
+## default do Wails seria "${INFO_PROJECTNAME}.exe" (= keyward.exe), que
+## colidiria com o binário da CLI instalado no mesmo diretório.
+## wails_tools.nsh só define o valor se ele ainda não existir, então este
+## define precede o include abaixo.
+####
+!define PRODUCT_EXECUTABLE "keyward-gui.exe"
+
+####
 ## Include the wails tools
 ####
 !include "wails_tools.nsh"
@@ -90,8 +100,25 @@ Section
     !insertmacro wails.webview2runtime
 
     SetOutPath $INSTDIR
-    
+
     !insertmacro wails.files
+
+    # CLI e TUI, montadas em bin/ pelo job de build do workflow de release.
+    # Caminho relativo a build\windows\nsis (de onde o makensis é chamado).
+    File "/oname=keyward.exe" "..\..\..\bin\keyward.exe"
+    File "/oname=keyward-tui.exe" "..\..\..\bin\keyward-tui.exe"
+
+    # Coloca o diretório de instalação no PATH da máquina, pra que `keyward`
+    # e `keyward-tui` funcionem em qualquer terminal.
+    #
+    # Feito via PowerShell de propósito, NÃO escrevendo no registro direto:
+    # as strings do NSIS têm limite de 1024 caracteres e um PATH de sistema
+    # real costuma passar disso — ler e reescrever pelo NSIS truncaria (e
+    # portanto corromperia) o PATH do usuário. [Environment]::
+    # SetEnvironmentVariable não tem esse limite e já dispara o broadcast de
+    # WM_SETTINGCHANGE sozinho.
+    nsExec::ExecToLog `powershell -NoProfile -NonInteractive -Command "$$p=[Environment]::GetEnvironmentVariable('Path','Machine'); $$d='$INSTDIR'; if ($$p -notlike ('*'+$$d+'*')) { [Environment]::SetEnvironmentVariable('Path',($$p.TrimEnd(';')+';'+$$d),'Machine') }"`
+    Pop $0 # descarta o código de saída — as macros seguintes usam a pilha
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
@@ -102,8 +129,13 @@ Section
     !insertmacro wails.writeUninstaller
 SectionEnd
 
-Section "uninstall" 
+Section "uninstall"
     !insertmacro wails.setShellContext
+
+    # Tira o diretório de instalação do PATH da máquina (mesma abordagem via
+    # PowerShell da instalação, pelo mesmo motivo de limite de string).
+    nsExec::ExecToLog `powershell -NoProfile -NonInteractive -Command "$$d='$INSTDIR'; $$p=[Environment]::GetEnvironmentVariable('Path','Machine'); $$n=($$p.Split(';') | Where-Object { $$_ -ne $$d -and $$_ -ne '' }) -join ';'; [Environment]::SetEnvironmentVariable('Path',$$n,'Machine')"`
+    Pop $0 # descarta o código de saída — as macros seguintes usam a pilha
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
 

@@ -12,26 +12,23 @@ permissions:
   contents: write
 
 jobs:
-  # cmd/cli e cmd/tui são Go puro (sem cgo) e viram binários pelo GoReleaser
-  # no job "goreleaser" abaixo. A GUI (Wails) precisa de cgo + webview nativo
-  # por SO, então é empacotada aqui, numa matriz de runners nativos, usando
-  # o tooling próprio do Wails (internal/adapter/gui/Taskfile.yml) — não dá
-  # pra fazer isso com o GoReleaser (ver docs/build.md e .goreleaser.yaml).
-  package-gui:
+  # Cada runner é autossuficiente: builda as TRÊS interfaces pro seu próprio
+  # SO, monta o arquivo compactado e o instalador, e sobe tudo pronto. O
+  # GoReleaser não builda nada (ver .goreleaser.yaml) — a GUI precisa de cgo
+  # + webview nativo, e no macOS o artefato é um bundle .app, que é um
+  # diretório e não caberia no modelo de archives dele.
+  build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            platform: windows
           - os: ubuntu-latest
             platform: linux
+          - os: windows-latest
+            platform: windows
           - os: macos-latest
             platform: darwin
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: internal/adapter/gui
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -63,59 +60,141 @@ jobs:
       # adicionado explicitamente ao $GITHUB_PATH.
       - name: Install NSIS (Windows)
         if: matrix.platform == 'windows'
+        shell: bash
         run: |
           choco install nsis -y
           echo 'C:\Program Files (x86)\NSIS' >> "$GITHUB_PATH"
-        shell: bash
 
       - name: Install wails3 CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
-      # nfpm.yaml (build/linux/nfpm/nfpm.yaml) interpola ${VERSION} no
-      # metadata do pacote deb/rpm/AUR — sem isso, o pacote sai com uma
-      # versão vazia/inválida.
-      - name: Derive VERSION from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-        shell: bash
-
-      - name: Package GUI (Windows — NSIS installer)
-        if: matrix.platform == 'windows'
-        run: wails3 task package
-
-      - name: Package GUI (Linux — AppImage/deb/rpm/AUR)
-        if: matrix.platform == 'linux'
-        run: wails3 task package
-
-      # A task "package:dmg" só existe namespaced sob "darwin:" (o Taskfile
-      # raiz não expõe um atalho pra ela — só "package", que gera o .app
-      # sem .dmg).
-      - name: Package GUI (macOS — .dmg)
-        if: matrix.platform == 'darwin'
-        run: wails3 task darwin:package:dmg
-
-      # Cada plataforma gera formatos diferentes em bin/ (inclusive o
-      # binário cru e, no macOS, o .app como diretório) — filtra só os
-      # instaladores de verdade, já que o GitHub Release/extra_files do
-      # GoReleaser espera arquivos, não diretórios.
-      - name: Collect installer(s)
+      # VERSION alimenta as ldflags de main.version e o ${VERSION} do
+      # nfpm.yaml. VERSION_NUMERIC descarta o sufixo de pré-lançamento
+      # (0.2.0-beta.1 -> 0.2.0) porque o NSIS monta VIProductVersion como
+      # "${INFO_PRODUCTVERSION}.0" e exige 4 partes puramente numéricas —
+      # uma tag beta quebraria o makensis.
+      - name: Derive version from tag
         shell: bash
         run: |
-          mkdir -p gui-dist
-          case "${{ matrix.platform }}" in
-            windows) cp bin/*-installer.exe gui-dist/ ;;
-            linux)   cp bin/*.AppImage bin/*.deb bin/*.rpm bin/*.pkg.tar.zst gui-dist/ ;;
-            darwin)  cp bin/*.dmg gui-dist/ ;;
-          esac
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "VERSION_NUMERIC=${VERSION%%-*}" >> "$GITHUB_ENV"
 
-      - name: Upload installer artifact
+      # ---------------------------------------------------------------
+      # Linux
+      # ---------------------------------------------------------------
+      # A GUI é buildada PRIMEIRO e renomeada na sequência: `wails3 task
+      # build` sempre emite bin/keyward, que é exatamente o nome do binário
+      # da CLI — inverter a ordem faria um sobrescrever o outro.
+      - name: Build all three binaries (Linux)
+        if: matrix.platform == 'linux'
+        working-directory: internal/adapter/gui
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          wails3 task build
+          mv bin/keyward bin/keyward-gui
+          go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward     github.com/felipehrs/keyward/cmd/cli
+          go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward-tui github.com/felipehrs/keyward/cmd/tui
+
+      - name: Assemble archive and packages (Linux)
+        if: matrix.platform == 'linux'
+        working-directory: internal/adapter/gui
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/dist-release"
+          tar czf "${GITHUB_WORKSPACE}/dist-release/keyward_${VERSION}_linux_amd64.tar.gz" \
+            -C bin keyward keyward-tui keyward-gui
+          # generate:* em vez de create:* de propósito: as tasks create:deb/
+          # create:rpm têm `deps: build`, que rebuildaria a GUI por cima de
+          # bin/keyward — onde agora mora a CLI.
+          wails3 task linux:generate:dotdesktop
+          wails3 task linux:generate:deb
+          wails3 task linux:generate:rpm
+          mv bin/*.deb bin/*.rpm "${GITHUB_WORKSPACE}/dist-release/"
+
+      # ---------------------------------------------------------------
+      # Windows
+      # ---------------------------------------------------------------
+      - name: Build all three binaries (Windows)
+        if: matrix.platform == 'windows'
+        working-directory: internal/adapter/gui
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          wails3 task build
+          mv bin/keyward.exe bin/keyward-gui.exe
+          go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward.exe     github.com/felipehrs/keyward/cmd/cli
+          go build -ldflags "-s -w -X main.version=${VERSION}" -o bin/keyward-tui.exe github.com/felipehrs/keyward/cmd/tui
+
+      - name: Assemble archive (Windows)
+        if: matrix.platform == 'windows'
+        working-directory: internal/adapter/gui
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:GITHUB_WORKSPACE/dist-release" | Out-Null
+          Compress-Archive -Path bin/keyward.exe,bin/keyward-tui.exe,bin/keyward-gui.exe `
+            -DestinationPath "$env:GITHUB_WORKSPACE/dist-release/keyward_${env:VERSION}_windows_amd64.zip"
+
+      # makensis é chamado direto, não via `wails3 task windows:create:nsis:
+      # installer`: aquela task tem `deps: build` (rebuildaria a GUI sobre a
+      # CLI) e aponta ARG_WAILS_AMD64_BINARY pra bin/keyward.exe, que agora
+      # é a CLI. O project.nsi puxa CLI e TUI de bin/ por conta própria.
+      - name: Build NSIS installer (Windows)
+        if: matrix.platform == 'windows'
+        working-directory: internal/adapter/gui
+        shell: bash
+        run: |
+          wails3 generate webview2bootstrapper -dir "$(pwd)/build/windows/nsis"
+          cd build/windows/nsis
+          makensis \
+            -DINFO_PRODUCTVERSION="${VERSION_NUMERIC}" \
+            -DARG_WAILS_AMD64_BINARY="$(cygpath -w "$(pwd)/../../../bin/keyward-gui.exe")" \
+            project.nsi
+          mv ../../../bin/*-installer.exe "${GITHUB_WORKSPACE}/dist-release/"
+
+      # ---------------------------------------------------------------
+      # macOS — universal (amd64 + arm64) nos três executáveis
+      # ---------------------------------------------------------------
+      # package:universal já builda as duas arquiteturas, faz lipo e monta o
+      # .app. Depois dele bin/keyward é o binário universal da GUI, que pode
+      # ser descartado: o bundle já tem sua própria cópia dentro.
+      - name: Build all three binaries (macOS)
+        if: matrix.platform == 'darwin'
+        working-directory: internal/adapter/gui
+        run: |
+          wails3 task darwin:package:universal
+          mv bin/keyward.app bin/keyward-gui.app
+          rm -f bin/keyward
+          for cmd in cli tui; do
+            [ "$cmd" = "cli" ] && out=keyward || out=keyward-tui
+            for arch in amd64 arm64; do
+              CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" \
+                go build -ldflags "-s -w -X main.version=${VERSION}" \
+                -o "bin/${out}-${arch}" "github.com/felipehrs/keyward/cmd/${cmd}"
+            done
+            lipo -create -output "bin/${out}" "bin/${out}-amd64" "bin/${out}-arm64"
+            rm "bin/${out}-amd64" "bin/${out}-arm64"
+          done
+
+      - name: Assemble archive (macOS)
+        if: matrix.platform == 'darwin'
+        working-directory: internal/adapter/gui
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/dist-release"
+          tar czf "${GITHUB_WORKSPACE}/dist-release/keyward_${VERSION}_darwin_universal.tar.gz" \
+            -C bin keyward keyward-tui keyward-gui.app
+
+      # ---------------------------------------------------------------
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: gui-${{ matrix.platform }}
-          path: internal/adapter/gui/gui-dist/*
+          name: dist-${{ matrix.platform }}
+          path: dist-release/*
           if-no-files-found: error
 
-  goreleaser:
-    needs: package-gui
+  release:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -129,11 +208,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Download GUI installers
+      - name: Download release artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: gui-*
-          path: dist-gui
+          pattern: dist-*
+          path: dist-release
           merge-multiple: true
 
       - name: Run GoReleaser
